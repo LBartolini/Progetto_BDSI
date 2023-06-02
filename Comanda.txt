@@ -1,8 +1,0 @@
-Comanda EasyBreak:
-
-Realizzare un database per la gestione di ristoranti di hotel, con relativa gestione dei pernottatori dell'hotel. 
-Sono previste operazioni di: 
-ordinazione in camera, ordinazione al tavolo, recensioni da parte dei clienti, pagamento, prenotazione del tavolo, ordinazione da asporto.
-E' richiesta la memorizzazione del menù, i relativi ingredienti e possibili intolleranze.
-Le recensioni devono essere nominative, con la selezione di voto su 5 stelle e recensione testuale.
-Il pagamento deve essere relativo ad un ordine e deve memorizzare il tipo di pagamento.
