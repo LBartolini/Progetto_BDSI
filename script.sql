@@ -26,7 +26,7 @@ CREATE TABLE IF NOT EXISTS Categoria (
   Id int(11) NOT NULL AUTO_INCREMENT,
   Scuola varchar(10) NOT NULL,
   Nome varchar(32) NOT NULL,
-  PRIMARY KEY (Id),
+  PRIMARY KEY (Id, Scuola),
   FOREIGN KEY (Scuola) REFERENCES Scuola (CodMeccanografico) ON UPDATE CASCADE
 ) ENGINE=InnoDB;
 
@@ -126,112 +126,33 @@ CREATE TABLE IF NOT EXISTS Ricarica (
 
 ############### POPOLAMENTO TABELLE #########################
 
-INSERT INTO Risorsa_Astratta VALUES
-("8854180858-978-8854180857","Architettura romana", "1999-03-01", "Architettura", "Libro"),
-("8838694451-978-8838694455","Basi di dati", "2018-02-15", "Informatica", "Libro"),
-("884983084X-978-8849830842","La via della schiavitù", "2011-04-13", "Economia", "Libro"),
-("10.1145-98457.98525","An approximate analysis of the LRU and FIFO buffer replacement schemes", "1990-04-15", "Informatica", "Articolo"), #articoli di dominio pubblico o inventati
-("10.1245-9543457.98525","Architettura fra Passato e presente", "2021-02-15", "Architettura", "Articolo"), #Abbiamo usato tesi di persone che o non esitono od hanno dato il consenso
-("ARTL1994000000061","I FALSI PROBLEMI STRUTTURALI DI GUARINO GUARINI", "1994-04-15", "Architettura", "Tesi"),
-("ARTL200600032342361","Economia e Finanza", "2006-04-15", "Economia", "Tesi"),
-("ARTL202000032342361","Algoritmi", "2020-04-15", "Informatica", "Tesi");
+INSERT INTO Allergene (Nome) VALUES 
+	("Glutine"),
+    ("Lattosio"),
+    ("Arachidi"),
+    ("Soia");
+    
+INSERT INTO Scuola VALUES 
+	("ABCD123456", "Giovanni Falcone", "Roma"),
+    ("EFGH789012", "Leonardo da Vinci", "Milano"),
+    ("IJKL345678", "Giuseppe Verdi", "Napoli"),
+    ("MNOP901234", "Albert Einstein", "Verona"),
+    ("QRST567890", "Galileo Galilei", "Trieste"),
+    ("UVWX123456", "Maria Montessori", "Genova"),
+    ("YZAB789012", "Cesare Beccaria", "Napoli"),
+    ("CDEF345678", "Antonio Gramsci", "Cagliari"),
+    ("GHIJ901234", "Dante Alighieri", "Firenze"),
+    ("KLMN567890", "Enrico Fermi", "Bologna"),
+    ("OPQR123456", "Guglielmo Marconi", "Napoli"),
+    ("STUV789012", "Michelangelo Buonarroti", "Padova"),
+    ("BCDE901234", "Giacomo Leopardi", "Torino"),
+    ("WXYZ345678", "Alessandro Manzoni", "Genova"),
+    ("FGHI567890", "Raffaello Sanzio", "Venezia");
 
-INSERT INTO Autore(Nome,cognome) VALUES
-( "Friedrich A.", "von Hayek"),
-("Savina", "Mazzantini"),
-("Mario", "Rossi"),
-("Paolo", "Atzeni"),
-("Stefano", "Ceri "),
-("Piero", "Fraternali"),
-("Riccardo", "Torlone"),
-("Paolo","Verdi"),
-("Asit", "Dan"),
-("Don", "Towsley");
-
-INSERT INTO Pubblicazione VALUES
-("884983084X-978-8849830842",1),
-("8838694451-978-8838694455",4),
-("8838694451-978-8838694455",5),
-("8838694451-978-8838694455",6),
-("8838694451-978-8838694455",7),
-("8854180858-978-8854180857", 3),
-("8854180858-978-8854180857", 2),
-("10.1145-98457.98525", 9),
-("10.1145-98457.98525", 10),
-("ARTL202000032342361", 8),
-("ARTL1994000000061", 2),
-("ARTL200600032342361", 1),
-("10.1245-9543457.98525", 3);
-
-LOAD DATA LOCAL INFILE "Biblioteche.csv" INTO TABLE Biblioteca  #inserire il proprio filepath
+LOAD DATA LOCAL INFILE "C:\\Users\\Stefano\\Desktop\\Informatica\\SQL\\Categorie.csv" INTO TABLE Categoria  #inserire il proprio filepath
 	FIELDS TERMINATED BY ";"
 	LINES TERMINATED BY "\r\n"
 	IGNORE 1 ROWS;
-
-INSERT INTO Risorsa_Fisica VALUES
-("8854180858-978-8854180857", 1234567, "Si",  'Scienze Tecnolgiche', "Lettura"),
-("8838694451-978-8838694455", 126743567, "No",  'DIMAI-Ulisse DINI', "S1"),
-("884983084X-978-8849830842", 123242354, "Si", 'DIMAI-Ulisse DINI', "S2"),
-("10.1145-98457.98525", 125622354, "Si", 'Scienze Economiche', "A1"),
-("884983084X-978-8849830842", 125642354, "No", 'Scienze Economiche', "S2"),
-("10.1245-9543457.98525", 123642354, "Si", 'Scienze Tecnolgiche', "Ingresso"),
-("ARTL1994000000061", 0342354, "Si", 'Scienze Tecnolgiche', "Archivio 1"),
-("ARTL200600032342361", 12523354, "No", 'Scienze Economiche', "Sala Tesi2"),
-("ARTL202000032342361", 1343354, "Si", 'DIMAI-Ulisse DINI', "ST");
-
-LOAD DATA LOCAL INFILE "Dipendenti.txt" INTO TABLE Dipendente  #inserire il proprio filepath
-	FIELDS TERMINATED BY ";"
-	LINES TERMINATED BY "\r\n"
-	IGNORE 1 ROWS;
-
-UPDATE Biblioteca 
-	SET ID_Responsabile = 203
-	WHERE Nome = 'DIMAI-Ulisse DINI';
-UPDATE Biblioteca 
-	SET ID_Responsabile = 430
-	WHERE Nome = 'Scienze Economiche';
-UPDATE Biblioteca 
-	SET ID_Responsabile = 519
-	WHERE Nome = 'Scienze Tecnolgiche';
-
-INSERT INTO Recapito VALUES
-('203', '555-345668'),
-('410', 'gianni.smp@gmail.com'),
-('410', '256-384739'),
-('510', 'laura.noncu@outlook.it'),
-('514', '045-3453245'),
-('519', '12-312478'),
-('519', 'Il.nc@gmail.com'),
-('519', '234-35567');
-
-INSERT INTO Attivita VALUES
-("Dall'Architettura romana ad oggi", '2018-06-01', '2018-07-21','2018-07-01'),
-("Algoritmi Informatici e Basi di Dati", '2017-09-01', '2018-09-21','2018-12-01'),
-("Dall'Architettura romana ad oggi", '2019-06-01', '2019-07-21','2019-07-01'),
-("Economia moderna", '2021-05-10', '2021-07-20', NULL),
-("Algoritmi Informatici e Basi di Dati", '2021-09-01', '2021-09-21',NULL);
-
-INSERT INTO Partecipazione VALUES
-(203, "Algoritmi Informatici e Basi di Dati", '2017-09-01'),
-(410, "Algoritmi Informatici e Basi di Dati", '2017-09-01'),
-(203, "Algoritmi Informatici e Basi di Dati", '2021-09-01'),
-(412, "Algoritmi Informatici e Basi di Dati", '2021-09-01'),
-(430, "Economia moderna", '2021-05-10'),
-(510, "Economia moderna", '2021-05-10'),
-(513, "Dall'Architettura romana ad oggi", '2018-06-01'),
-(519, "Dall'Architettura romana ad oggi", '2019-06-01');
-
-INSERT INTO Contributo VALUES
-('10.1145-98457.98525', '125622354', 'Economia moderna', '2021-05-10'),
-('10.1245-9543457.98525', '123642354', "Algoritmi Informatici e Basi di Dati", '2017-09-01'),
-('8838694451-978-8838694455', '126743567', "Algoritmi Informatici e Basi di Dati", '2017-09-01'),
-('10.1245-9543457.98525', '123642354', "Algoritmi Informatici e Basi di Dati", '2021-09-01'),
-('884983084X-978-8849830842',	'125642354', 'Economia moderna', '2021-05-10'),
-('10.1245-9543457.98525', '123642354', "Dall'Architettura romana ad oggi", "2018-06-01" ),
-('8854180858-978-8854180857', '1234567',  "Dall'Architettura romana ad oggi", "2018-06-01"),
-('ARTL1994000000061',  '342354', "Dall'Architettura romana ad oggi", "2018-06-01"),
-('10.1245-9543457.98525', '123642354', "Dall'Architettura romana ad oggi", "2019-06-01" ),
-('8854180858-978-8854180857', '1234567',  "Dall'Architettura romana ad oggi", "2019-06-01");
 
 ###################### INTERROGAZIONI #####################
 
@@ -376,6 +297,7 @@ SELECT * FROM AttivitaDipendentiMatematica;
 # quando un ordine diventa confermato aggiungerlo agli acquisti passati
 # calcolare l'importo durante la creazione di un ordine (in base al prodotto e alla quantità) e controllare che la data inserita non sia futura rispetto a quella attuale
 # durante creazione transazione controllare che la data non sia nel futuro
+# autoincrement categoria in base alla scuola
 
 DELIMITER $$
 CREATE TRIGGER CheckEsistenzaRisorsaAstratta
