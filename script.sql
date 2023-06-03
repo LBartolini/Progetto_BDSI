@@ -18,6 +18,7 @@ CREATE TABLE IF NOT EXISTS Scuola (
   CodMeccanografico varchar(10) NOT NULL,
   Nome varchar(25) NOT NULL,
   Citta varchar(25) NOT NULL,
+  FineRicreazione time NOT NULL,
   PRIMARY KEY (CodMeccanografico)
 ) ENGINE=InnoDB;
 
@@ -26,7 +27,7 @@ CREATE TABLE IF NOT EXISTS Categoria (
   Id int(11) NOT NULL AUTO_INCREMENT,
   Scuola varchar(10) NOT NULL,
   Nome varchar(32) NOT NULL,
-  PRIMARY KEY (Id, Scuola),
+  PRIMARY KEY (Id),
   FOREIGN KEY (Scuola) REFERENCES Scuola (CodMeccanografico) ON UPDATE CASCADE
 ) ENGINE=InnoDB;
 
@@ -45,7 +46,6 @@ CREATE TABLE IF NOT EXISTS Bar (
   PIva varchar(11) NOT NULL,
   Email varchar(50) NOT NULL,
   Telefono varchar(25) NOT NULL,
-  TermineTurno time NOT NULL,
   Scuola varchar(10) NOT NULL,
   PRIMARY KEY (pIva),
   FOREIGN KEY (Scuola) REFERENCES Scuola (CodMeccanografico) ON UPDATE CASCADE
@@ -126,33 +126,65 @@ CREATE TABLE IF NOT EXISTS Ricarica (
 
 ############### POPOLAMENTO TABELLE #########################
 
-INSERT INTO Allergene (Nome) VALUES 
-	("Glutine"),
-    ("Lattosio"),
-    ("Arachidi"),
-    ("Soia");
+INSERT INTO Allergene VALUES 
+	(1, "Glutine"),
+    (2, "Lattosio"),
+    (3, "Arachidi"),
+    (4, "Soia");
     
 INSERT INTO Scuola VALUES 
-	("ABCD123456", "Giovanni Falcone", "Roma"),
-    ("EFGH789012", "Leonardo da Vinci", "Milano"),
-    ("IJKL345678", "Giuseppe Verdi", "Napoli"),
-    ("MNOP901234", "Albert Einstein", "Verona"),
-    ("QRST567890", "Galileo Galilei", "Trieste"),
-    ("UVWX123456", "Maria Montessori", "Genova"),
-    ("YZAB789012", "Cesare Beccaria", "Napoli"),
-    ("CDEF345678", "Antonio Gramsci", "Cagliari"),
-    ("GHIJ901234", "Dante Alighieri", "Firenze"),
-    ("KLMN567890", "Enrico Fermi", "Bologna"),
-    ("OPQR123456", "Guglielmo Marconi", "Napoli"),
-    ("STUV789012", "Michelangelo Buonarroti", "Padova"),
-    ("BCDE901234", "Giacomo Leopardi", "Torino"),
-    ("WXYZ345678", "Alessandro Manzoni", "Genova"),
-    ("FGHI567890", "Raffaello Sanzio", "Venezia");
+	("ABCD123456", "Giovanni Falcone", "Roma", "10:20:00"),
+    ("EFGH789012", "Leonardo da Vinci", "Milano", "10:30:00"),
+    ("IJKL345678", "Giuseppe Verdi", "Napoli", "10:15:00");
 
 LOAD DATA LOCAL INFILE "C:\\Users\\Stefano\\Desktop\\Informatica\\SQL\\Categorie.csv" INTO TABLE Categoria  #inserire il proprio filepath
 	FIELDS TERMINATED BY ";"
 	LINES TERMINATED BY "\r\n"
 	IGNORE 1 ROWS;
+    
+LOAD DATA LOCAL INFILE "C:\\Users\\Stefano\\Desktop\\Informatica\\SQL\\Utenti.txt" INTO TABLE Utente  #inserire il proprio filepath
+	FIELDS TERMINATED BY ";"
+	LINES TERMINATED BY "\r\n"
+	IGNORE 1 ROWS;
+	
+INSERT INTO Bar VALUES 
+	("85920475612", "bar.ventura@email.it", "3459876213", "ABCD123456"),
+    ("32650198347", "bar.angolo@email.it", "3896210458", "EFGH789012"),
+    ("71249560382", "bar.sorriso@email.it", "3337128945", "IJKL345678"),
+    ("49781624053", "bar.sole@email.it", "3465892034", "EFGH789012");
+    
+INSERT INTO Prodotto VALUES 
+	(1, "85920475612", "Panino con Salame", 2, "Salato"),
+    (2, "85920475612", "Pizza", 1.5, "Salato"),
+    (3, "85920475612", "Pepsi", 1, "Bevanda"),
+    (4, "85920475612", "Cornetto", 1.1, "Dolce"),
+    (5, "85920475612", "Gomme da Masticare", 2, "Altro"),
+    (1, "32650198347", "Schiacciata con Tonno", 2.5, "Salato"),
+    (2, "32650198347", "Caramelle", 0.5, "Altro"),
+    (3, "32650198347", "Caffe", 0.6, "Bevanda"),
+    (1, "71249560382", "Hot Dog", 1.5, "Salato"),
+    (2, "71249560382", "Fanta", 1, "Bevanda"),
+    (3, "71249560382", "Torta", 1.5, "Dolce"),
+    (4, "71249560382", "Panino con Salame", 2, "Salato"),
+    (1, "49781624053", "Croccantelle", 1, "Salato"),
+    (2, "49781624053", "Brioche", 1.1, "Dolce"),
+    (3, "49781624053", "Coca Cola", 1, "Bevanda");
+    
+INSERT INTO PresenzaAllergeneProdotto VALUES
+	(1, 1, "85920475612"),
+    (1, 2, "85920475612"),
+    (1, 4, "85920475612"),
+    (1, 1, "32650198347"),
+    (1, 1, "71249560382"),
+    (1, 3, "71249560382"),
+    (1, 4, "71249560382"),
+    (1, 1, "49781624053"),
+    (1, 2, "49781624053"),
+    (2, 4, "85920475612"),
+    (2, 3, "71249560382"),
+    (2, 2, "49781624053"),
+    (3, 4, "85920475612"),
+    (4, 3, "49781624053");
 
 ###################### INTERROGAZIONI #####################
 
@@ -297,7 +329,7 @@ SELECT * FROM AttivitaDipendentiMatematica;
 # quando un ordine diventa confermato aggiungerlo agli acquisti passati
 # calcolare l'importo durante la creazione di un ordine (in base al prodotto e alla quantità) e controllare che la data inserita non sia futura rispetto a quella attuale
 # durante creazione transazione controllare che la data non sia nel futuro
-# autoincrement categoria in base alla scuola
+# autoincrement per il prodotto in base al bar
 
 DELIMITER $$
 CREATE TRIGGER CheckEsistenzaRisorsaAstratta
