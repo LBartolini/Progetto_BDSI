@@ -69,8 +69,7 @@ CREATE TABLE IF NOT EXISTS PresenzaAllergeneProdotto (
   Bar varchar(11) NOT NULL,
   PRIMARY KEY (Allergene, Prodotto, Bar),
   FOREIGN KEY (Allergene) REFERENCES Allergene (Id) ON UPDATE CASCADE,
-  FOREIGN KEY (Prodotto) REFERENCES Prodotto (Id) ON UPDATE CASCADE,
-  FOREIGN KEY (Bar) REFERENCES Bar (PIva) ON UPDATE CASCADE
+  FOREIGN KEY (Prodotto, Bar) REFERENCES Prodotto (Id, Bar)  ON UPDATE CASCADE
 ) ENGINE=InnoDB;
 
 DROP TABLE IF EXISTS Ordini;
@@ -83,9 +82,8 @@ CREATE TABLE IF NOT EXISTS Ordini (
   Importo float NOT NULL DEFAULT 0,
   Data datetime NOT NULL DEFAULT current_timestamp(),
   PRIMARY KEY (Id, Bar),
-  FOREIGN KEY (Bar) REFERENCES Bar (PIva) ON UPDATE CASCADE,
-  FOREIGN KEY (Utente) REFERENCES Utente (Email) ON UPDATE CASCADE,
-  FOREIGN KEY (Prodotto) REFERENCES Prodotto (Id) ON UPDATE CASCADE
+  FOREIGN KEY (Prodotto, Bar) REFERENCES Prodotto (Id, Bar) ON UPDATE CASCADE,
+  FOREIGN KEY (Utente) REFERENCES Utente (Email) ON UPDATE CASCADE
 ) ENGINE=InnoDB;
 
 DROP TABLE IF EXISTS Transazione;
@@ -107,9 +105,8 @@ CREATE TABLE IF NOT EXISTS StoricoAcquisti (
   Prodotto int(11) NOT NULL,
   Quantita int(11) NOT NULL,
   PRIMARY KEY (Transazione, Bar),
-  FOREIGN KEY (Transazione) REFERENCES Transazione (Id) ON UPDATE CASCADE,
-  FOREIGN KEY (Bar) REFERENCES Transazione (Bar) ON UPDATE CASCADE,
-  FOREIGN KEY (Prodotto) REFERENCES Prodotto (Id) ON UPDATE CASCADE
+  FOREIGN KEY (Transazione, Bar) REFERENCES Transazione (Id, Bar) ON UPDATE CASCADE,
+  FOREIGN KEY (Prodotto, Bar) REFERENCES Prodotto (Id, Bar) ON UPDATE CASCADE
 ) ENGINE=InnoDB;
 
 DROP TABLE IF EXISTS Ricarica;
@@ -117,9 +114,136 @@ CREATE TABLE IF NOT EXISTS Ricarica (
   Transazione int(11) NOT NULL,
   Bar varchar(11) NOT NULL,
   PRIMARY KEY (Transazione, Bar),
-  FOREIGN KEY (Bar) REFERENCES Transazione (Bar) ON UPDATE CASCADE,
-  FOREIGN KEY (Transazione) REFERENCES Transazione (Id) ON UPDATE CASCADE
+  FOREIGN KEY (Transazione, Bar) REFERENCES Transazione (Id, Bar) ON UPDATE CASCADE
 ) ENGINE=InnoDB;
+
+###################### FUNZIONI E PROCEDURE #####################
+
+DROP FUNCTION IF EXISTS BarAccessibileDaUtente;
+DELIMITER $$
+CREATE FUNCTION BarAccessibileDaUtente(Email VARCHAR(50), Bar VARCHAR(11)) 
+RETURNS BOOLEAN
+DETERMINISTIC
+BEGIN
+	IF(Bar IN (SELECT Bar.PIva
+				FROM Bar
+                JOIN Categoria ON Bar.Scuola=Categoria.Scuola
+                JOIN Utente ON Categoria.Id=Utente.Categoria
+                WHERE Utente.Email = Email)) 
+		THEN 
+			RETURN TRUE;
+    ELSE 
+			RETURN FALSE;
+    END IF;
+END $$
+DELIMITER ;
+
+# funzione per calcolare il saldo di un utente (per un determinato bar) (saldo provvisorio o definitivo) (provvisorio tiene conto degli ordini in sospeso, definitivo solo delle ricariche ed acquisti passati)
+# procedura per trovare i prodotti in base ad un allergene
+# procedura per trovare tutti gli ordini di una stessa categoria di utenti e in base a un bar
+# procedura per eseguire la conferma di un ordine e quindi viene cancellato dalla tabella ordini e messo nella tabella StoricoAcquisti
+
+###################### TRIGGER #####################
+
+DROP TRIGGER IF EXISTS CalcolaImportoOrdine;
+DELIMITER $$
+CREATE TRIGGER CalcolaImportoOrdine
+BEFORE INSERT ON Ordini
+FOR EACH ROW
+BEGIN
+	IF (NEW.Importo <= 0) 
+	THEN SET NEW.Importo = (
+		SELECT Prezzo*NEW.Quantita 
+        FROM Prodotto
+        WHERE Prodotto.Id = NEW.Prodotto AND Prodotto.Bar = NEW.Bar
+		);
+    END IF;
+END $$
+DELIMITER ;
+
+DROP TRIGGER IF EXISTS CheckBarInOrdine;
+DELIMITER $$
+CREATE TRIGGER CheckBarInOrdine
+BEFORE INSERT ON Ordini
+FOR EACH ROW
+BEGIN
+	IF NOT BarAccessibileDaUtente(NEW.Utente, NEW.Bar)
+		THEN SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'Bar non accessibile dall\'utente selezionato';
+	END IF;
+END $$
+DELIMITER ;
+
+DROP TRIGGER IF EXISTS CheckBarInTransazione;
+DELIMITER $$
+CREATE TRIGGER CheckBarInTransazione
+BEFORE INSERT ON Transazione
+FOR EACH ROW
+BEGIN
+	IF NOT BarAccessibileDaUtente(NEW.Utente, NEW.Bar)
+		THEN SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'Bar non accessibile dall\'utente selezionato';
+	END IF;
+END $$
+DELIMITER ;
+
+DROP TRIGGER IF EXISTS AutoIncrementProdottoBar;
+DELIMITER $$
+CREATE TRIGGER AutoIncrementProdottoBar
+BEFORE INSERT ON Prodotto
+FOR EACH ROW
+BEGIN
+	DECLARE MaxIdPerBar INT;
+	SELECT MAX(t.Id)
+    INTO MaxIdPerBar
+    FROM (SELECT Id
+			FROM Prodotto
+            WHERE Bar = NEW.Bar) t;
+	IF MaxIdPerBar IS NULL
+		THEN SET NEW.Id = 1;
+	ELSE 
+		SET NEW.Id = MaxIdPerBar + 1;
+	END IF;
+END $$
+DELIMITER ;
+
+DROP TRIGGER IF EXISTS AutoIncrementOrdineBar;
+DELIMITER $$
+CREATE TRIGGER AutoIncrementOrdineBar
+BEFORE INSERT ON Ordini
+FOR EACH ROW
+BEGIN
+	DECLARE MaxIdPerBar INT;
+	SELECT MAX(t.Id)
+    INTO MaxIdPerBar
+    FROM (SELECT Id
+			FROM Ordini
+            WHERE Bar = NEW.Bar) t;
+	IF MaxIdPerBar IS NULL
+		THEN SET NEW.Id = 1;
+	ELSE 
+		SET NEW.Id = MaxIdPerBar + 1;
+	END IF;
+END $$
+DELIMITER ;
+
+DROP TRIGGER IF EXISTS AutoIncrementTransazioneBar;
+DELIMITER $$
+CREATE TRIGGER AutoIncrementTransazioneBar
+BEFORE INSERT ON Transazione
+FOR EACH ROW
+BEGIN
+	DECLARE MaxIdPerBar INT;
+	SELECT MAX(t.Id)
+    INTO MaxIdPerBar
+    FROM (SELECT Id
+			FROM Transazione
+            WHERE Bar = NEW.Bar) t;
+	IF MaxIdPerBar IS NULL
+		THEN SET NEW.Id = 1;
+	ELSE 
+		SET NEW.Id = MaxIdPerBar + 1;
+	END IF;
+END $$
+DELIMITER ;
 
 ############### POPOLAMENTO TABELLE #########################
 
@@ -149,26 +273,26 @@ INSERT INTO Bar VALUES
     ("32650198347", "bar.angolo@email.it", "3896210458", "EFGH789012"),
     ("71249560382", "bar.sorriso@email.it", "3337128945", "IJKL345678"),
     ("49781624053", "bar.sole@email.it", "3465892034", "EFGH789012");
+
+INSERT INTO Prodotto (Bar, Nome, Prezzo, Tipo) VALUES 
+	("85920475612", "Panino con Salame", 2, "Salato"),
+    ("85920475612", "Pizza", 1.5, "Salato"),
+    ("85920475612", "Pepsi", 1, "Bevanda"),
+    ("85920475612", "Cornetto", 1.1, "Dolce"),
+    ("85920475612", "Gomme da Masticare", 2, "Altro"),
     
-INSERT INTO Prodotto VALUES 
-	(1, "85920475612", "Panino con Salame", 2, "Salato"),
-    (2, "85920475612", "Pizza", 1.5, "Salato"),
-    (3, "85920475612", "Pepsi", 1, "Bevanda"),
-    (4, "85920475612", "Cornetto", 1.1, "Dolce"),
-    (5, "85920475612", "Gomme da Masticare", 2, "Altro"),
+    ("32650198347", "Schiacciata con Tonno", 2.5, "Salato"),
+    ("32650198347", "Caramelle", 0.5, "Altro"),
+    ("32650198347", "Caffe", 0.6, "Bevanda"),
     
-    (1, "32650198347", "Schiacciata con Tonno", 2.5, "Salato"),
-    (2, "32650198347", "Caramelle", 0.5, "Altro"),
-    (3, "32650198347", "Caffe", 0.6, "Bevanda"),
+    ("71249560382", "Hot Dog", 1.5, "Salato"),
+    ("71249560382", "Fanta", 1, "Bevanda"),
+    ("71249560382", "Torta", 1.5, "Dolce"),
+    ("71249560382", "Panino con Salame", 2, "Salato"),
     
-    (1, "71249560382", "Hot Dog", 1.5, "Salato"),
-    (2, "71249560382", "Fanta", 1, "Bevanda"),
-    (3, "71249560382", "Torta", 1.5, "Dolce"),
-    (4, "71249560382", "Panino con Salame", 2, "Salato"),
-    
-    (1, "49781624053", "Croccantelle", 1, "Salato"),
-    (2, "49781624053", "Brioche", 1.1, "Dolce"),
-    (3, "49781624053", "Coca Cola", 1, "Bevanda");
+    ("49781624053", "Croccantelle", 1, "Salato"),
+    ("49781624053", "Brioche", 1.1, "Dolce"),
+    ("49781624053", "Coca Cola", 1, "Bevanda");
     
 INSERT INTO PresenzaAllergeneProdotto VALUES
 	# Glutine
@@ -223,23 +347,20 @@ INSERT INTO Ordini (Utente, Prodotto, Bar, Quantita) VALUES
     ("sara.santoro60@email.it", 2, "49781624053", 2),
     ("alessia.gallo136@email.it", 1, "49781624053", 1);
 
-LOAD DATA LOCAL INFILE "C:\\Users\\Stefano\\Desktop\\Informatica\\SQL\\Ricariche.csv" INTO TABLE Transazione  #inserire il proprio filepath
+LOAD DATA LOCAL INFILE "C:\\Users\\Stefano\\Desktop\\Informatica\\SQL\\Transazione.csv" INTO TABLE Transazione  #inserire il proprio filepath
 	FIELDS TERMINATED BY ";"
 	LINES TERMINATED BY "\r\n"
 	IGNORE 1 ROWS;
+    
 LOAD DATA LOCAL INFILE "C:\\Users\\Stefano\\Desktop\\Informatica\\SQL\\Ricariche.csv" INTO TABLE Ricarica  #inserire il proprio filepath
 	FIELDS TERMINATED BY ";"
 	LINES TERMINATED BY "\r\n"
-	IGNORE 30 ROWS;
-    
-LOAD DATA LOCAL INFILE "C:\\Users\\Stefano\\Desktop\\Informatica\\SQL\\StoricoAcquisti.csv" INTO TABLE Transazione  #inserire il proprio filepath
-	FIELDS TERMINATED BY ";"
-	LINES TERMINATED BY "\r\n"
 	IGNORE 1 ROWS;
+
 LOAD DATA LOCAL INFILE "C:\\Users\\Stefano\\Desktop\\Informatica\\SQL\\StoricoAcquisti.csv" INTO TABLE StoricoAcquisti  #inserire il proprio filepath
 	FIELDS TERMINATED BY ";"
 	LINES TERMINATED BY "\r\n"
-	IGNORE 36 ROWS;
+	IGNORE 1 ROWS;
 
 ###################### INTERROGAZIONI #####################
 
@@ -252,71 +373,6 @@ SELECT Utente.Email
 
 ## Trovare tutti gli omonimi in una scuola
 ## TODO
-        
-###################### PROCEDURE E FUNZIONI #####################
-
-# funzione per calcolare il saldo di un utente (saldo provvisorio o definitivo) (provvisorio tiene conto degli ordini in sospeso, definitivo solo delle ricariche ed acquisti passati)
-# funzione per trovare i prodotti in base ad un allergene
-# funzione per trovare tutti gli ordini di una stessa categoria di utenti e in base a un bar
-# conferma di un ordine e quindi viene cancellato dalla tabella ordini e messo nella tabella StoricoAcquisti
-
-## Operazione 2: ricercare la disponibilità e la collocazione di una risorsa
-
-DROP PROCEDURE IF EXISTS RicercaTitolo;
-
-DELIMITER $$
-CREATE PROCEDURE RicercaTitolo(Titolo VARCHAR(70))
-BEGIN
-	SELECT DISTINCT Biblioteca, Sala, Disponibilita
-		FROM Risorsa_Astratta RA JOIN Risorsa_Fisica RF ON RA.ID=RF.Risorsa_Astratta
-		WHERE RA.Titolo=Titolo;
-END $$
-DELIMITER ;
-
-CALL RicercaTitolo("La via della schiavitu");
-
-## Ricerca del responsabile della biblioteca in cui lavora un dato dipendente
-
-DROP PROCEDURE IF EXISTS ResponsabileDipendente;
-DELIMITER $$
-CREATE PROCEDURE ResponsabileDipendente(ID INT)
-BEGIN
-	DECLARE bib VARCHAR(20);
-    SELECT Impiego INTO bib FROM Dipendente D WHERE D.ID=ID;
-    SELECT D.ID, D.Nome, D.Cognome, D.Impiego
-		FROM Biblioteca B JOIN Dipendente D ON B.Nome=D.Impiego
-		WHERE D.ID=B.ID_Responsabile AND B.Nome=bib;
-END $$
-DELIMITER ;
-
-CALL ResponsabileDipendente(410);
-
-## Funzione che restituisce il numero di volte in cui una risorsa astratta è stata usata in un'attività iniziata un certo anno
-
-DROP FUNCTION IF EXISTS NumeroRisorseAstratteAttivita;
-
-# SET GLOBAL log_bin_trust_function_creators=TRUE;
-DELIMITER $$
-CREATE FUNCTION NumeroRisorseAstratteAttivita(IDRisorsa VARCHAR(30), Anno YEAR) 
-RETURNS INT
-DETERMINISTIC
-BEGIN
-	DECLARE n INT DEFAULT 0;
-	IF Anno>YEAR(NOW())
-		THEN RETURN NULL;
-	ELSE
-		SELECT COUNT(*) INTO n 
-			FROM Contributo C JOIN Risorsa_Astratta RA ON C.ID_Risorsa=RA.ID
-			WHERE RA.ID=IDRisorsa AND YEAR(C.Data_inizio_attivita)<Anno<YEAR(NOW())
-			GROUP BY RA.ID;
-		RETURN n;
-	END IF;
-END $$
-DELIMITER ;
-# SET GLOBAL log_bin_trust_function_creators=FALSE;
-
-SELECT NumeroRisorseAstratteAttivita('8838694451-978-8838694455', '2022');
-SELECT NumeroRisorseAstratteAttivita('8838694451-978-8838694455', '2017');
 
 ###################### VISTE #####################
 
@@ -339,28 +395,3 @@ CREATE VIEW AttivitaDipendentiMatematica AS
 		FROM DipendentiMatematica DM JOIN Partecipazione P ON P.Dipendente=DM.ID
 			JOIN Attivita A ON P.Attivita=A.Nome AND P.Data_inizio_attivita=A.Data_inizio;
 SELECT * FROM AttivitaDipendentiMatematica;
-
-###################### TRIGGER #####################
-
-# calcolare l'importo durante la creazione di un ordine (in base al prodotto e alla quantità)
-# autoincrement per il prodotto in base al bar
-# autoincrement per l'ordine in base al bar
-# autoincrement per le transazioni in base al bar
-# controllo durante l'inserimento di un ordine, il bar deve essere legato alla scuola di appartenenza dell'utente
-# controllo durante l'inserimento di una transazione, il bar deve essere legato alla scuola di appartenenza dell'utente
-
-DELIMITER $$
-CREATE TRIGGER CheckEsistenzaRisorsaAstratta
-BEFORE INSERT ON Risorsa_Fisica
-FOR EACH ROW
-BEGIN
-	IF (SELECT COUNT(*) FROM Risorsa_Astratta RA WHERE RA.ID=NEW.Risorsa_Astratta = 0)
-		THEN INSERT INTO Risorsa_Astratta(ID) VALUES (NEW.Risorsa_Astratta);
-	END IF;
-END $$
-DELIMITER ;
-
-SELECT * FROM Risorsa_Astratta;
-INSERT INTO Risorsa_Fisica VALUES ("978-88-919-0455-3",42,"SI","DIMAI-Ulisse Dini","Lettura");
-SELECT * FROM Risorsa_Astratta;
-SELECT * FROM Risorsa_Fisica;
