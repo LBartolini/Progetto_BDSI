@@ -53,7 +53,7 @@ CREATE TABLE IF NOT EXISTS Bar (
 
 DROP TABLE IF EXISTS Prodotto;
 CREATE TABLE IF NOT EXISTS Prodotto (
-  Id int(11) NOT NULL,
+  Id int(11) NOT NULL AUTO_INCREMENT,
   Bar varchar(11) NOT NULL,
   Nome varchar(25) NOT NULL,
   Prezzo float NOT NULL,
@@ -82,8 +82,7 @@ CREATE TABLE IF NOT EXISTS Ordini (
   Quantita int(11) NOT NULL,
   Importo float NOT NULL DEFAULT 0,
   Data datetime NOT NULL DEFAULT current_timestamp(),
-  Esito smallint(1) NOT NULL DEFAULT -1,  #-1 aperto, 0 annullato, 1 confermato
-  PRIMARY KEY (Id),
+  PRIMARY KEY (Id, Bar),
   FOREIGN KEY (Bar) REFERENCES Bar (PIva) ON UPDATE CASCADE,
   FOREIGN KEY (Utente) REFERENCES Utente (Email) ON UPDATE CASCADE,
   FOREIGN KEY (Prodotto) REFERENCES Prodotto (Id) ON UPDATE CASCADE
@@ -91,25 +90,25 @@ CREATE TABLE IF NOT EXISTS Ordini (
 
 DROP TABLE IF EXISTS Transazione;
 CREATE TABLE IF NOT EXISTS Transazione (
-  Id int(11) NOT NULL,
+  Id int(11) NOT NULL AUTO_INCREMENT,
   Bar varchar(11) NOT NULL,
+  Utente varchar(50) NOT NULL,
   Data datetime NOT NULL DEFAULT current_timestamp(),
   Importo float NOT NULL,
   PRIMARY KEY (Id, Bar),
-  FOREIGN KEY (Bar) REFERENCES Bar (PIva) ON UPDATE CASCADE
+  FOREIGN KEY (Bar) REFERENCES Bar (PIva) ON UPDATE CASCADE,
+  FOREIGN KEY (Utente) REFERENCES Utente (Email) ON UPDATE CASCADE
 ) ENGINE=InnoDB;
 
 DROP TABLE IF EXISTS StoricoAcquisti;
 CREATE TABLE IF NOT EXISTS StoricoAcquisti (
   Transazione int(11) NOT NULL,
   Bar varchar(11) NOT NULL,
-  Utente varchar(50) NOT NULL,
   Prodotto int(11) NOT NULL,
   Quantita int(11) NOT NULL,
-  PRIMARY KEY (Transazione, Bar, Utente, Prodotto),
+  PRIMARY KEY (Transazione, Bar),
   FOREIGN KEY (Transazione) REFERENCES Transazione (Id) ON UPDATE CASCADE,
-  FOREIGN KEY (Bar) REFERENCES Bar (PIva) ON UPDATE CASCADE,
-  FOREIGN KEY (Utente) REFERENCES Utente (Email) ON UPDATE CASCADE,
+  FOREIGN KEY (Bar) REFERENCES Transazione (Bar) ON UPDATE CASCADE,
   FOREIGN KEY (Prodotto) REFERENCES Prodotto (Id) ON UPDATE CASCADE
 ) ENGINE=InnoDB;
 
@@ -117,10 +116,8 @@ DROP TABLE IF EXISTS Ricarica;
 CREATE TABLE IF NOT EXISTS Ricarica (
   Transazione int(11) NOT NULL,
   Bar varchar(11) NOT NULL,
-  Utente varchar(50) NOT NULL,
-  PRIMARY KEY (Transazione, Bar, Utente),
-  FOREIGN KEY (Bar) REFERENCES Bar (PIva) ON UPDATE CASCADE,
-  FOREIGN KEY (Utente) REFERENCES Utente (Email) ON UPDATE CASCADE,
+  PRIMARY KEY (Transazione, Bar),
+  FOREIGN KEY (Bar) REFERENCES Transazione (Bar) ON UPDATE CASCADE,
   FOREIGN KEY (Transazione) REFERENCES Transazione (Id) ON UPDATE CASCADE
 ) ENGINE=InnoDB;
 
@@ -159,18 +156,22 @@ INSERT INTO Prodotto VALUES
     (3, "85920475612", "Pepsi", 1, "Bevanda"),
     (4, "85920475612", "Cornetto", 1.1, "Dolce"),
     (5, "85920475612", "Gomme da Masticare", 2, "Altro"),
+    
     (1, "32650198347", "Schiacciata con Tonno", 2.5, "Salato"),
     (2, "32650198347", "Caramelle", 0.5, "Altro"),
     (3, "32650198347", "Caffe", 0.6, "Bevanda"),
+    
     (1, "71249560382", "Hot Dog", 1.5, "Salato"),
     (2, "71249560382", "Fanta", 1, "Bevanda"),
     (3, "71249560382", "Torta", 1.5, "Dolce"),
     (4, "71249560382", "Panino con Salame", 2, "Salato"),
+    
     (1, "49781624053", "Croccantelle", 1, "Salato"),
     (2, "49781624053", "Brioche", 1.1, "Dolce"),
     (3, "49781624053", "Coca Cola", 1, "Bevanda");
     
 INSERT INTO PresenzaAllergeneProdotto VALUES
+	# Glutine
 	(1, 1, "85920475612"),
     (1, 2, "85920475612"),
     (1, 4, "85920475612"),
@@ -180,69 +181,84 @@ INSERT INTO PresenzaAllergeneProdotto VALUES
     (1, 4, "71249560382"),
     (1, 1, "49781624053"),
     (1, 2, "49781624053"),
+    # Lattosio
     (2, 4, "85920475612"),
     (2, 3, "71249560382"),
     (2, 2, "49781624053"),
+    # Arachidi
     (3, 4, "85920475612"),
+    # Soia
     (4, 3, "49781624053");
+    
+INSERT INTO Ordini (Utente, Prodotto, Bar, Quantita) VALUES
+	("elena.romano112@email.it", 1, "85920475612", 1),
+    ("elena.romano112@email.it", 3, "85920475612", 2),
+    ("chiara.russo54@email.it", 5, "85920475612", 1),
+    ("francesca.romano12@email.it", 2, "85920475612", 3),
+    ("claudia.parisi118@email.it", 1, "85920475612", 4),
+    ("elena.romano84@email.it", 3, "85920475612", 1),
+    
+    ("elisa.monti28@email.it", 1, "32650198347", 1),
+    ("elisa.monti28@email.it", 3, "32650198347", 2),
+    ("francesca.rossi100@email.it", 2, "32650198347", 1),
+    ("matteo.monti103@email.it", 2, "32650198347", 3),
+    ("matteo.monti103@email.it", 1, "32650198347", 2),
+    ("elisa.russo18@email.it", 3, "32650198347", 1),
+    ("chiara.rizzo20@email.it", 2, "32650198347", 6),
+    ("lorenzo.bianchi77@email.it", 1, "32650198347", 1),
+    
+	("matteo.monti47@email.it", 1, "71249560382", 1),
+    ("sofia.ferrari134@email.it", 3, "71249560382", 2),
+    ("alessia.gallo94@email.it", 4, "71249560382", 1),
+    ("claudia.parisi48@email.it", 2, "71249560382", 3),
+    ("sara.santoro32@email.it", 4, "71249560382", 2),
+    ("sofia.ferrari106@email.it", 3, "71249560382", 1),
+    
+    ("francesca.rossi100@email.it", 1, "49781624053", 5),
+    ("francesca.rossi100@email.it", 3, "49781624053", 3),
+    ("lorenzo.bianchi49@email.it", 2, "49781624053", 2),
+    ("laura.bianchi10@email.it", 2, "49781624053", 3),
+    ("matteo.monti103@email.it", 1, "49781624053", 2),
+    ("sara.santoro60@email.it", 3, "49781624053", 1),
+    ("sara.santoro60@email.it", 2, "49781624053", 2),
+    ("alessia.gallo136@email.it", 1, "49781624053", 1);
+
+LOAD DATA LOCAL INFILE "C:\\Users\\Stefano\\Desktop\\Informatica\\SQL\\Ricariche.csv" INTO TABLE Transazione  #inserire il proprio filepath
+	FIELDS TERMINATED BY ";"
+	LINES TERMINATED BY "\r\n"
+	IGNORE 1 ROWS;
+LOAD DATA LOCAL INFILE "C:\\Users\\Stefano\\Desktop\\Informatica\\SQL\\Ricariche.csv" INTO TABLE Ricarica  #inserire il proprio filepath
+	FIELDS TERMINATED BY ";"
+	LINES TERMINATED BY "\r\n"
+	IGNORE 30 ROWS;
+    
+LOAD DATA LOCAL INFILE "C:\\Users\\Stefano\\Desktop\\Informatica\\SQL\\StoricoAcquisti.csv" INTO TABLE Transazione  #inserire il proprio filepath
+	FIELDS TERMINATED BY ";"
+	LINES TERMINATED BY "\r\n"
+	IGNORE 1 ROWS;
+LOAD DATA LOCAL INFILE "C:\\Users\\Stefano\\Desktop\\Informatica\\SQL\\StoricoAcquisti.csv" INTO TABLE StoricoAcquisti  #inserire il proprio filepath
+	FIELDS TERMINATED BY ";"
+	LINES TERMINATED BY "\r\n"
+	IGNORE 36 ROWS;
 
 ###################### INTERROGAZIONI #####################
 
-## Trovare i dipendenti(nome e cognome) il cui coidice fiscale inizia per M o finisce per R
+## Trovare tutti gli Utenti che appartengono al Bar con Partita iva "85920475612"
+SELECT Utente.Email 
+	FROM Utente
+		JOIN Categoria ON Utente.Categoria=Categoria.Id
+		JOIN Bar ON Categoria.Scuola=Bar.Scuola
+	WHERE Bar.PIva="85920475612";
 
-SELECT Nome, Cognome
-	FROM Dipendente
-	WHERE CF LIKE 'M%' OR '%R';
-
-## Trovare gli autori presenti nella Biblioteca di Architettura
-
-SELECT DISTINCT ID, Au.Nome, Cognome
-	FROM Autore au JOIN pubblicazione pub ON au.Id = pub.ID_Autore
-        JOIN Risorsa_fisica Ris ON Ris.Risorsa_Astratta = Risorsa
-        JOIN Biblioteca Bi ON Biblioteca = Bi.Nome
-	WHERE Dipartimento = 'Architettura';
-    
-## Trovare per ogni attività tutti i dipendenti che ci hanno partecipato
-
-# SET sql_mode=(SELECT REPLACE (@@sql_mode, 'ONLY_FULL_GROUP_BY', ''));
-SELECT att.Nome, Data_inizio, GROUP_CONCAT(CONCAT(dip.nome, ' ', cognome)) AS Partecipanti
-	FROM attivita Att JOIN Partecipazione Pa ON Pa.Attivita = Att.nome AND Pa.Data_Inizio_Attivita = Att.Data_Inizio
-        JOIN Dipendente Dip ON Pa.Dipendente = Dip.ID
-	GROUP BY (att.Data_inizio);
-
-## Trovare i dipendenti che non hanno mai partecipato ad un'attività
-DROP VIEW IF EXISTS DipendentiAttivita;
-CREATE VIEW DipendentiAttivita AS
-	SELECT D.ID, COUNT(P.Attivita) AS NumAttivita
-		FROM Dipendente D JOIN Partecipazione P ON D.ID=P.Dipendente
-		GROUP BY D.ID; # contiene ID Dipendente e numero di attivita a cui ha partecipato
-
-SELECT D.ID, D.Nome, D.Cognome
-	FROM Dipendente D
-	WHERE NOT EXISTS (SELECT DA.ID FROM DipendentiAttivita DA WHERE DA.ID=D.ID);
-    
-## Trovare gli autori che hanno pubblicato più di una risorsa 
-
-SELECT DISTINCT Nome, Cognome
-	FROM Autore Au JOIN Pubblicazione Pub ON Au.ID = Pub.ID_Autore
-	WHERE ID_Autore NOT IN 
-		(SELECT DISTINCT ID_Autore FROM Autore JOIN pubblicazione ON ID = ID_Autore
-			GROUP BY ID_Autore
-			HAVING COUNT(*) < 2);
-        
-## Trovare il dipendente che ha partecipato al maggior numero di attivita
-
-SELECT D.Nome, D.Cognome, D.ID
-	FROM Dipendente D NATURAL JOIN DipendentiAttivita DA 
-	WHERE NumAttivita=(SELECT max(NumAttivita) FROM DipendentiAttivita);
-    
-DROP VIEW DipendentiAttivita;
+## Trovare tutti gli omonimi in una scuola
+## TODO
         
 ###################### PROCEDURE E FUNZIONI #####################
 
 # funzione per calcolare il saldo di un utente (saldo provvisorio o definitivo) (provvisorio tiene conto degli ordini in sospeso, definitivo solo delle ricariche ed acquisti passati)
 # funzione per trovare i prodotti in base ad un allergene
-# funzione per trovare tutti gli ordini di una stessa categoria di utenti
+# funzione per trovare tutti gli ordini di una stessa categoria di utenti e in base a un bar
+# conferma di un ordine e quindi viene cancellato dalla tabella ordini e messo nella tabella StoricoAcquisti
 
 ## Operazione 2: ricercare la disponibilità e la collocazione di una risorsa
 
@@ -326,10 +342,12 @@ SELECT * FROM AttivitaDipendentiMatematica;
 
 ###################### TRIGGER #####################
 
-# quando un ordine diventa confermato aggiungerlo agli acquisti passati
-# calcolare l'importo durante la creazione di un ordine (in base al prodotto e alla quantità) e controllare che la data inserita non sia futura rispetto a quella attuale
-# durante creazione transazione controllare che la data non sia nel futuro
+# calcolare l'importo durante la creazione di un ordine (in base al prodotto e alla quantità)
 # autoincrement per il prodotto in base al bar
+# autoincrement per l'ordine in base al bar
+# autoincrement per le transazioni in base al bar
+# controllo durante l'inserimento di un ordine, il bar deve essere legato alla scuola di appartenenza dell'utente
+# controllo durante l'inserimento di una transazione, il bar deve essere legato alla scuola di appartenenza dell'utente
 
 DELIMITER $$
 CREATE TRIGGER CheckEsistenzaRisorsaAstratta
