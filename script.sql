@@ -138,10 +138,107 @@ BEGIN
 END $$
 DELIMITER ;
 
-# funzione per calcolare il saldo di un utente (per un determinato bar) (saldo provvisorio o definitivo) (provvisorio tiene conto degli ordini in sospeso, definitivo solo delle ricariche ed acquisti passati)
+DROP FUNCTION IF EXISTS GetSaldoUtente;
+DELIMITER $$
+CREATE FUNCTION GetSaldoUtente(Email VARCHAR(50), Bar VARCHAR(11), FlagSaldoDefinitivo BOOLEAN) 
+RETURNS float
+DETERMINISTIC
+BEGIN
+	DECLARE ricariche float DEFAULT 0;
+    DECLARE spese float DEFAULT 0;
+    DECLARE ordini float DEFAULT 0;
+    DECLARE saldo float DEFAULT 0;
+    
+    SELECT SUM(Transazione.Importo)
+    INTO ricariche
+    FROM Transazione
+    JOIN Ricarica ON Ricarica.Transazione=Transazione.Id AND Ricarica.Bar=Transazione.Bar
+    WHERE Transazione.Utente=Email AND Transazione.Bar=Bar;
+    
+    SELECT SUM(Transazione.Importo)
+    INTO spese
+    FROM Transazione
+    JOIN StoricoAcquisti ON StoricoAcquisti.Transazione=Transazione.Id AND StoricoAcquisti.Bar=Transazione.Bar
+    WHERE Transazione.Utente=Email AND Transazione.Bar=Bar;
+    
+    IF NOT FlagSaldoDefinitivo
+    THEN 
+		SELECT SUM(Ordini.Importo)
+		INTO ordini
+		FROM Ordini
+		WHERE Ordini.Utente=Email AND Ordini.Bar=Bar;
+    END IF;
+    
+    SET saldo = ricariche - spese - ordini;
+    RETURN saldo;
+END $$
+DELIMITER ;
+
+DROP FUNCTION IF EXISTS GetSaldoDefinitivoUtente;
+DELIMITER $$
+CREATE FUNCTION GetSaldoDefinitivoUtente(Email VARCHAR(50), Bar VARCHAR(11)) 
+RETURNS float
+DETERMINISTIC
+BEGIN
+	RETURN GetSaldoUtente(Email, Bar, TRUE);
+END $$
+DELIMITER ;
+
+DROP FUNCTION IF EXISTS GetSaldoProvvisorioUtente;
+DELIMITER $$
+CREATE FUNCTION GetSaldoProvvisorioUtente(Email VARCHAR(50), Bar VARCHAR(11)) 
+RETURNS float
+DETERMINISTIC
+BEGIN
+	RETURN GetSaldoUtente(Email, Bar, FALSE);
+END $$
+DELIMITER ;
+
 # procedura per trovare i prodotti in base ad un allergene
-# procedura per trovare tutti gli ordini di una stessa categoria di utenti e in base a un bar
-# procedura per eseguire la conferma di un ordine e quindi viene cancellato dalla tabella ordini e messo nella tabella StoricoAcquisti
+DROP PROCEDURE IF EXISTS ProdottiSenzaAllergene;
+DELIMITER $$
+CREATE PROCEDURE ProdottiSenzaAllergene(IN Bar VARCHAR(11), IN Allergene INT(11))
+BEGIN
+	SELECT *
+    FROM Prodotto
+    WHERE (Id, Bar) NOT IN (SELECT Prod.Id, Prod.Bar
+		FROM Prodotto Prod
+		JOIN PresenzaAllergeneProdotto Pres ON Pres.Prodotto=Prod.Id AND Pres.Bar=Prod.Bar
+		WHERE Pres.Allergene=Allergene AND Prod.Bar=Bar) AND Prodotto.Bar=Bar;
+END $$
+DELIMITER ;
+
+DROP PROCEDURE IF EXISTS ConfermaOrdine;
+DELIMITER $$
+CREATE PROCEDURE ConfermaOrdine(IN Id INT(11), IN Bar VARCHAR(11))
+BEGIN
+	DECLARE Utente VARCHAR(50);
+    DECLARE Prodotto INT(11);
+    DECLARE Quantita INT(11);
+    DECLARE Importo float;
+    DECLARE IDTransazione INT(11);
+    
+    SELECT O.Utente, O.Prodotto, O.Quantita, O.Importo
+	INTO Utente, Prodotto, Quantita, Importo
+    FROM Ordini O
+    WHERE O.Id=Id AND O.Bar=Bar;
+    
+    INSERT INTO Transazione(Bar, Utente, Importo)
+    VALUES (Bar, Utente, Importo);
+    
+    SELECT MAX(T.Id)
+    INTO IDTransazione
+    FROM Transazione T
+    WHERE T.Bar=Bar;
+    
+    INSERT INTO StoricoAcquisti
+    VALUES (IDTransazione, Bar, Prodotto, Quantita);
+    
+    DELETE FROM Ordini
+    WHERE Ordini.Id=Id AND Ordini.Bar=Bar;
+
+END $$
+DELIMITER ;
 
 ###################### TRIGGER #####################
 
