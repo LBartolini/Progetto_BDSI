@@ -208,6 +208,46 @@ BEGIN
 END $$
 DELIMITER ;
 
+DROP PROCEDURE IF EXISTS EseguiRicarica;
+DELIMITER $$
+CREATE PROCEDURE EseguiRicarica(IN Utente VARCHAR(50), IN Bar VARCHAR(11), IN Importo float)
+BEGIN
+	DECLARE IDTransazione INT(11);
+    
+	INSERT INTO Transazione(Bar, Utente, Importo)
+    VALUES (Bar, Utente, Importo);
+    
+    SELECT MAX(T.Id)
+    INTO IDTransazione
+    FROM Transazione T
+    WHERE T.Bar=Bar;
+    
+    INSERT INTO Ricarica
+    VALUES (IDTransazione, Bar);
+
+END $$
+DELIMITER ;
+
+DROP PROCEDURE IF EXISTS EseguiAcquisto;
+DELIMITER $$
+CREATE PROCEDURE EseguiAcquisto(IN Utente VARCHAR(50), IN Bar VARCHAR(11), IN Importo float, IN Prodotto INT(11), IN Quantita INT(11))
+BEGIN
+	DECLARE IDTransazione INT(11);
+    
+	INSERT INTO Transazione(Bar, Utente, Importo)
+    VALUES (Bar, Utente, Importo);
+    
+    SELECT MAX(T.Id)
+    INTO IDTransazione
+    FROM Transazione T
+    WHERE T.Bar=Bar;
+    
+    INSERT INTO StoricoAcquisti
+    VALUES (IDTransazione, Bar, Prodotto, Quantita);
+
+END $$
+DELIMITER ;
+
 DROP PROCEDURE IF EXISTS ConfermaOrdine;
 DELIMITER $$
 CREATE PROCEDURE ConfermaOrdine(IN Id INT(11), IN Bar VARCHAR(11))
@@ -223,16 +263,7 @@ BEGIN
     FROM Ordini O
     WHERE O.Id=Id AND O.Bar=Bar;
     
-    INSERT INTO Transazione(Bar, Utente, Importo)
-    VALUES (Bar, Utente, Importo);
-    
-    SELECT MAX(T.Id)
-    INTO IDTransazione
-    FROM Transazione T
-    WHERE T.Bar=Bar;
-    
-    INSERT INTO StoricoAcquisti
-    VALUES (IDTransazione, Bar, Prodotto, Quantita);
+    CALL EseguiAcquisto(Utente, Bar, Importo, Prodotto, Quantita);
     
     DELETE FROM Ordini
     WHERE Ordini.Id=Id AND Ordini.Bar=Bar;
@@ -484,7 +515,7 @@ FROM Utente U
 	JOIN Categoria C ON U.Categoria=C.Id
 	JOIN Bar B ON C.Scuola=B.Scuola  
 GROUP BY U.Email
-HAVING MIN(GetSaldoDefinitivoUtente(U.Email, B.PIva)) >= 0;
+HAVING MIN(GetSaldoProvvisorioUtente(U.Email, B.PIva)) >= 0;
 
 ###################### VISTE #####################
 
@@ -501,8 +532,8 @@ INSERT INTO OrdiniBarAngolo(Utente, Prodotto, Bar, Quantita) VALUES ('elisa.mont
 SELECT * FROM OrdiniBarAngolo;
 SELECT * FROM OrdiniBarAngolo WHERE Utente='elisa.monti28@email.it';
 
-DROP VIEW IF EXISTS TransazioniGiornaliereBarSorriso; # PIva = 71249560382
-CREATE VIEW TransazioniGiornaliereBarSorriso AS
+DROP VIEW IF EXISTS TransazioniOdierneBarSorriso; # PIva = 71249560382
+CREATE VIEW TransazioniOdierneBarSorriso AS
 	SELECT *
     FROM ((SELECT T.Id, T.Utente, T.Importo, T.Data, 'Acquisto' AS Tipo
 		FROM Transazione T
@@ -513,6 +544,10 @@ CREATE VIEW TransazioniGiornaliereBarSorriso AS
 			FROM Transazione T
 			JOIN Ricarica R ON R.Transazione=T.Id AND R.Bar=T.Bar
 			WHERE T.Bar="71249560382")) t
+	WHERE DATE(t.Data) = CURDATE()
 	ORDER BY t.Data ASC;
 
-SELECT * FROM TransazioniGiornaliereBarSorriso;
+SELECT * FROM TransazioniOdierneBarSorriso; # dovrebbe essere vuota
+CALL EseguiRicarica('matteo.marchetti55@email.it', '71249560382', 50);
+CALL EseguiAcquisto('matteo.marchetti55@email.it', '71249560382', 4, 4, 2);
+SELECT * FROM TransazioniOdierneBarSorriso;
