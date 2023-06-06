@@ -149,13 +149,13 @@ BEGIN
     DECLARE ordini float DEFAULT 0;
     DECLARE saldo float DEFAULT 0;
     
-    SELECT SUM(Transazione.Importo)
+    SELECT IFNULL(SUM(Transazione.Importo), 0)
     INTO ricariche
     FROM Transazione
     JOIN Ricarica ON Ricarica.Transazione=Transazione.Id AND Ricarica.Bar=Transazione.Bar
     WHERE Transazione.Utente=Email AND Transazione.Bar=Bar;
     
-    SELECT SUM(Transazione.Importo)
+    SELECT IFNULL(SUM(Transazione.Importo), 0)
     INTO spese
     FROM Transazione
     JOIN StoricoAcquisti ON StoricoAcquisti.Transazione=Transazione.Id AND StoricoAcquisti.Bar=Transazione.Bar
@@ -163,7 +163,7 @@ BEGIN
     
     IF NOT FlagSaldoDefinitivo
     THEN 
-		SELECT SUM(Ordini.Importo)
+		SELECT IFNULL(SUM(Ordini.Importo), 0)
 		INTO ordini
 		FROM Ordini
 		WHERE Ordini.Utente=Email AND Ordini.Bar=Bar;
@@ -355,12 +355,12 @@ INSERT INTO Scuola VALUES
     ("EFGH789012", "Leonardo da Vinci", "Milano", "10:30:00"),
     ("IJKL345678", "Giuseppe Verdi", "Napoli", "10:15:00");
 
-LOAD DATA LOCAL INFILE "C:\\Users\\Stefano\\Desktop\\Informatica\\SQL\\Categorie.csv" INTO TABLE Categoria  #inserire il proprio filepath
+LOAD DATA LOCAL INFILE "Categorie.csv" INTO TABLE Categoria  #inserire il proprio filepath
 	FIELDS TERMINATED BY ";"
 	LINES TERMINATED BY "\r\n"
 	IGNORE 1 ROWS;
     
-LOAD DATA LOCAL INFILE "C:\\Users\\Stefano\\Desktop\\Informatica\\SQL\\Utenti.txt" INTO TABLE Utente  #inserire il proprio filepath
+LOAD DATA LOCAL INFILE "Utenti.txt" INTO TABLE Utente  #inserire il proprio filepath
 	FIELDS TERMINATED BY ";"
 	LINES TERMINATED BY "\r\n"
 	IGNORE 1 ROWS;
@@ -444,17 +444,17 @@ INSERT INTO Ordini (Utente, Prodotto, Bar, Quantita) VALUES
     ("sara.santoro60@email.it", 2, "49781624053", 2),
     ("alessia.gallo136@email.it", 1, "49781624053", 1);
 
-LOAD DATA LOCAL INFILE "C:\\Users\\Stefano\\Desktop\\Informatica\\SQL\\Transazione.csv" INTO TABLE Transazione  #inserire il proprio filepath
+LOAD DATA LOCAL INFILE "Transazione.csv" INTO TABLE Transazione  #inserire il proprio filepath
 	FIELDS TERMINATED BY ";"
 	LINES TERMINATED BY "\r\n"
 	IGNORE 1 ROWS;
     
-LOAD DATA LOCAL INFILE "C:\\Users\\Stefano\\Desktop\\Informatica\\SQL\\Ricariche.csv" INTO TABLE Ricarica  #inserire il proprio filepath
+LOAD DATA LOCAL INFILE "Ricariche.csv" INTO TABLE Ricarica  #inserire il proprio filepath
 	FIELDS TERMINATED BY ";"
 	LINES TERMINATED BY "\r\n"
 	IGNORE 1 ROWS;
 
-LOAD DATA LOCAL INFILE "C:\\Users\\Stefano\\Desktop\\Informatica\\SQL\\StoricoAcquisti.csv" INTO TABLE StoricoAcquisti  #inserire il proprio filepath
+LOAD DATA LOCAL INFILE "StoricoAcquisti.csv" INTO TABLE StoricoAcquisti  #inserire il proprio filepath
 	FIELDS TERMINATED BY ";"
 	LINES TERMINATED BY "\r\n"
 	IGNORE 1 ROWS;
@@ -468,27 +468,51 @@ SELECT Utente.Email
 		JOIN Bar ON Categoria.Scuola=Bar.Scuola
 	WHERE Bar.PIva="85920475612";
 
-## Trovare tutti gli omonimi in una scuola
-## TODO
+## Trovare tutti gli omonimi nella scuola 'EFGH789012'
+SELECT *
+FROM Utente
+WHERE Nome IN (SELECT DISTINCT(U.Nome)
+                FROM Utente U
+					JOIN Categoria C ON C.Id=U.Categoria
+                WHERE C.Scuola='EFGH789012'
+                GROUP BY U.Nome
+                HAVING COUNT(U.Nome)>1);
+
+## Trovare tutti gli Utenti con saldo provvisorio positivo(>= 0) per ogni Bar a cui possono accedere      
+SELECT U.Email, U.Nome, U.Cognome
+FROM Utente U
+	JOIN Categoria C ON U.Categoria=C.Id
+	JOIN Bar B ON C.Scuola=B.Scuola  
+GROUP BY U.Email
+HAVING MIN(GetSaldoDefinitivoUtente(U.Email, B.PIva)) >= 0;
 
 ###################### VISTE #####################
 
-DROP VIEW IF EXISTS DipendentiMatematica;
-CREATE VIEW DipendentiMatematica AS
+DROP VIEW IF EXISTS OrdiniBarAngolo; # PIva = 32650198347
+CREATE VIEW OrdiniBarAngolo AS
 	SELECT *
-		FROM Dipendente D
-		WHERE D.Impiego="DIMAI-Ulisse DINI"
-	WITH LOCAL CHECK OPTION;
-SELECT * FROM DipendentiMatematica;
+	FROM Ordini O
+	WHERE O.Bar="32650198347"
+WITH LOCAL CHECK OPTION;
+    
+SELECT * FROM OrdiniBarAngolo;
+# INSERT INTO OrdiniBarAngolo(Utente, Prodotto, Bar, Quantita) VALUES ('elisa.monti28@email.it', 1, "49781624053", 2); # Conflitto LOCAL CHECK OPTION causato dal Bar inserito non conforme
+INSERT INTO OrdiniBarAngolo(Utente, Prodotto, Bar, Quantita) VALUES ('elisa.monti28@email.it', 1, "32650198347", 2);
+SELECT * FROM OrdiniBarAngolo;
+SELECT * FROM OrdiniBarAngolo WHERE Utente='elisa.monti28@email.it';
 
-# INSERT INTO DipendentiMatematica VALUES (999, "A", "B", "C", "DIMAI"); errore per la local check option
-INSERT INTO DipendentiMatematica VALUES (999, "Prova", "", "", "DIMAI-Ulisse DINI");
-SELECT * FROM DipendentiMatematica;
-SELECT * FROM Dipendente WHERE Impiego="DIMAI-Ulisse DINI";
+DROP VIEW IF EXISTS TransazioniGiornaliereBarSorriso; # PIva = 71249560382
+CREATE VIEW TransazioniGiornaliereBarSorriso AS
+	SELECT *
+    FROM ((SELECT T.Id, T.Utente, T.Importo, T.Data, 'Acquisto' AS Tipo
+		FROM Transazione T
+		JOIN StoricoAcquisti SA ON SA.Transazione=T.Id AND SA.Bar=T.Bar
+		WHERE T.Bar="71249560382")
+			UNION
+		(SELECT T.Id, T.Utente, T.Importo, T.Data, 'Ricarica' AS Tipo
+			FROM Transazione T
+			JOIN Ricarica R ON R.Transazione=T.Id AND R.Bar=T.Bar
+			WHERE T.Bar="71249560382")) t
+	ORDER BY t.Data ASC;
 
-DROP VIEW IF EXISTS AttivitaDipendentiMatematica;
-CREATE VIEW AttivitaDipendentiMatematica AS
-	SELECT DM.ID, DM.Nome AS NomeDipendente, DM.Cognome, A.Nome AS NomeAttivita, A.Data_inizio, A.scadenza_prevista, A.data_fine
-		FROM DipendentiMatematica DM JOIN Partecipazione P ON P.Dipendente=DM.ID
-			JOIN Attivita A ON P.Attivita=A.Nome AND P.Data_inizio_attivita=A.Data_inizio;
-SELECT * FROM AttivitaDipendentiMatematica;
+SELECT * FROM TransazioniGiornaliereBarSorriso;
