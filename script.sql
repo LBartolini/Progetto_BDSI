@@ -386,12 +386,12 @@ INSERT INTO Scuola VALUES
     ("EFGH789012", "Leonardo da Vinci", "Milano", "10:30:00"),
     ("IJKL345678", "Giuseppe Verdi", "Napoli", "10:15:00");
 
-LOAD DATA LOCAL INFILE "Categorie.csv" INTO TABLE Categoria  #inserire il proprio filepath
+LOAD DATA LOCAL INFILE "/Users/lorenzo/Informatica/Progetto_BDSI/Categorie.csv" INTO TABLE Categoria  #inserire il proprio filepath
 	FIELDS TERMINATED BY ";"
 	LINES TERMINATED BY "\r\n"
 	IGNORE 1 ROWS;
     
-LOAD DATA LOCAL INFILE "Utenti.txt" INTO TABLE Utente  #inserire il proprio filepath
+LOAD DATA LOCAL INFILE "/Users/lorenzo/Informatica/Progetto_BDSI/Utenti.txt" INTO TABLE Utente  #inserire il proprio filepath
 	FIELDS TERMINATED BY ";"
 	LINES TERMINATED BY "\r\n"
 	IGNORE 1 ROWS;
@@ -475,23 +475,24 @@ INSERT INTO Ordini (Utente, Prodotto, Bar, Quantita) VALUES
     ("sara.santoro60@email.it", 2, "49781624053", 2),
     ("alessia.gallo136@email.it", 1, "49781624053", 1);
 
-LOAD DATA LOCAL INFILE "Transazione.csv" INTO TABLE Transazione  #inserire il proprio filepath
+LOAD DATA LOCAL INFILE "/Users/lorenzo/Informatica/Progetto_BDSI/Transazione.csv" INTO TABLE Transazione  #inserire il proprio filepath
 	FIELDS TERMINATED BY ";"
 	LINES TERMINATED BY "\r\n"
 	IGNORE 1 ROWS;
     
-LOAD DATA LOCAL INFILE "Ricariche.csv" INTO TABLE Ricarica  #inserire il proprio filepath
+LOAD DATA LOCAL INFILE "/Users/lorenzo/Informatica/Progetto_BDSI/Ricariche.csv" INTO TABLE Ricarica  #inserire il proprio filepath
 	FIELDS TERMINATED BY ";"
 	LINES TERMINATED BY "\r\n"
 	IGNORE 1 ROWS;
 
-LOAD DATA LOCAL INFILE "StoricoAcquisti.csv" INTO TABLE StoricoAcquisti  #inserire il proprio filepath
+LOAD DATA LOCAL INFILE "/Users/lorenzo/Informatica/Progetto_BDSI/StoricoAcquisti.csv" INTO TABLE StoricoAcquisti  #inserire il proprio filepath
 	FIELDS TERMINATED BY ";"
 	LINES TERMINATED BY "\r\n"
 	IGNORE 1 ROWS;
 
 ###################### INTERROGAZIONI #####################
 
+/*
 ## Trovare tutti gli Utenti che appartengono al Bar con Partita iva "85920475612"
 SELECT Utente.Email 
 	FROM Utente
@@ -516,6 +517,7 @@ FROM Utente U
 	JOIN Bar B ON C.Scuola=B.Scuola  
 GROUP BY U.Email
 HAVING MIN(GetSaldoProvvisorioUtente(U.Email, B.PIva)) >= 0;
+*/
 
 ###################### VISTE #####################
 
@@ -525,12 +527,14 @@ CREATE VIEW OrdiniBarAngolo AS
 	FROM Ordini O
 	WHERE O.Bar="32650198347"
 WITH LOCAL CHECK OPTION;
-    
+
+/*
 SELECT * FROM OrdiniBarAngolo;
 # INSERT INTO OrdiniBarAngolo(Utente, Prodotto, Bar, Quantita) VALUES ('elisa.monti28@email.it', 1, "49781624053", 2); # Conflitto LOCAL CHECK OPTION causato dal Bar inserito non conforme
 INSERT INTO OrdiniBarAngolo(Utente, Prodotto, Bar, Quantita) VALUES ('elisa.monti28@email.it', 1, "32650198347", 2);
 SELECT * FROM OrdiniBarAngolo;
 SELECT * FROM OrdiniBarAngolo WHERE Utente='elisa.monti28@email.it';
+*/
 
 DROP VIEW IF EXISTS TransazioniOdierneBarSorriso; # PIva = 71249560382
 CREATE VIEW TransazioniOdierneBarSorriso AS
@@ -547,7 +551,9 @@ CREATE VIEW TransazioniOdierneBarSorriso AS
 	WHERE DATE(t.Data) = CURDATE()
 	ORDER BY t.Data ASC;
 
+/*
 SELECT * FROM TransazioniOdierneBarSorriso; # dovrebbe essere vuota
 CALL EseguiRicarica('matteo.marchetti55@email.it', '71249560382', 50);
 CALL EseguiAcquisto('matteo.marchetti55@email.it', '71249560382', 4, 4, 2);
 SELECT * FROM TransazioniOdierneBarSorriso;
+*/
