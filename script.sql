@@ -62,6 +62,16 @@ CREATE TABLE IF NOT EXISTS Prodotto (
   FOREIGN KEY (Bar) REFERENCES Bar (PIva) ON UPDATE CASCADE
 ) ENGINE=InnoDB;
 
+DROP TABLE IF EXISTS StoricoPrezziProdotto;
+CREATE TABLE IF NOT EXISTS StoricoPrezziProdotto ( # contiene solo i prezzi precedenti a quello attuale
+  Prodotto int(11) NOT NULL,
+  Bar varchar(11) NOT NULL,
+  Prezzo float NOT NULL,
+  Data datetime NOT NULL DEFAULT current_timestamp(), ## NB: Questa data indica il momento fino al quale il prezzo indicato è da considerarsi valido
+  PRIMARY KEY (Prodotto, Bar, Data),
+  FOREIGN KEY (Prodotto, Bar) REFERENCES Prodotto (Id, Bar) ON UPDATE CASCADE
+) ENGINE=InnoDB;
+
 DROP TABLE IF EXISTS PresenzaAllergeneProdotto;
 CREATE TABLE IF NOT EXISTS PresenzaAllergeneProdotto (
   Allergene int(11) NOT NULL,
@@ -79,7 +89,6 @@ CREATE TABLE IF NOT EXISTS Ordini (
   Prodotto int(11) NOT NULL,
   Bar varchar(11) NOT NULL,
   Quantita int(11) NOT NULL,
-  Importo float NOT NULL DEFAULT 0,
   Data datetime NOT NULL DEFAULT current_timestamp(),
   PRIMARY KEY (Id, Bar),
   FOREIGN KEY (Prodotto, Bar) REFERENCES Prodotto (Id, Bar) ON UPDATE CASCADE,
@@ -88,11 +97,10 @@ CREATE TABLE IF NOT EXISTS Ordini (
 
 DROP TABLE IF EXISTS Transazione;
 CREATE TABLE IF NOT EXISTS Transazione (
-  Id int(11) NOT NULL AUTO_INCREMENT,
+  Id int(11) NOT NULL DEFAULT 0,
   Bar varchar(11) NOT NULL,
   Utente varchar(50) NOT NULL,
   Data datetime NOT NULL DEFAULT current_timestamp(),
-  Importo float NOT NULL,
   PRIMARY KEY (Id, Bar),
   FOREIGN KEY (Bar) REFERENCES Bar (PIva) ON UPDATE CASCADE,
   FOREIGN KEY (Utente) REFERENCES Utente (Email) ON UPDATE CASCADE
@@ -113,6 +121,7 @@ DROP TABLE IF EXISTS Ricarica;
 CREATE TABLE IF NOT EXISTS Ricarica (
   Transazione int(11) NOT NULL,
   Bar varchar(11) NOT NULL,
+  Importo float NOT NULL,
   PRIMARY KEY (Transazione, Bar),
   FOREIGN KEY (Transazione, Bar) REFERENCES Transazione (Id, Bar) ON UPDATE CASCADE
 ) ENGINE=InnoDB;
@@ -208,6 +217,56 @@ BEGIN
 END $$
 DELIMITER ;
 
+DROP FUNCTION IF EXISTS GetPrezzoProdotto;
+DELIMITER $$
+CREATE FUNCTION GetPrezzoProdotto(Prodotto INT(11), Bar VARCHAR(11), Data datetime) 
+RETURNS float
+DETERMINISTIC
+BEGIN
+	DECLARE Prezzo float DEFAULT NULL;
+    
+    SELECT SPP.Prezzo
+    INTO Prezzo
+    FROM StoricoPrezziProdotto SPP
+    WHERE SPP.Data >= Data AND SPP.Bar = Bar AND SPP.Prodotto = Prodotto
+    ORDER BY SPP.Data ASC
+    LIMIT 1;
+    
+    IF Prezzo IS NULL
+    THEN SELECT P.Prezzo
+		INTO Prezzo
+        FROM Prodotto P
+        WHERE P.Id = Prodotto AND P.Bar = Bar;
+	END IF;
+    
+    RETURN Prezzo;
+END $$
+DELIMITER ;
+
+DROP FUNCTION IF EXISTS GetPrezzoProdottoOdierno;
+DELIMITER $$
+CREATE FUNCTION GetPrezzoProdottoOdierno(Prodotto INT(11), Bar VARCHAR(11)) 
+RETURNS float
+DETERMINISTIC
+BEGIN
+    RETURN GetPrezzoProdotto(Prodotto, Bar, current_timestamp());
+END $$
+DELIMITER ;
+
+# procedura per trovare i prodotti in base ad un allergene
+DROP PROCEDURE IF EXISTS ProdottiSenzaAllergene;
+DELIMITER $$
+CREATE PROCEDURE ProdottiSenzaAllergene(IN Bar VARCHAR(11), IN Allergene INT(11))
+BEGIN
+	SELECT *
+    FROM Prodotto
+    WHERE (Id, Bar) NOT IN (SELECT Prod.Id, Prod.Bar
+		FROM Prodotto Prod
+		JOIN PresenzaAllergeneProdotto Pres ON Pres.Prodotto=Prod.Id AND Pres.Bar=Prod.Bar
+		WHERE Pres.Allergene=Allergene AND Prod.Bar=Bar) AND Prodotto.Bar=Bar;
+END $$
+DELIMITER ;
+
 DROP PROCEDURE IF EXISTS EseguiRicarica;
 DELIMITER $$
 CREATE PROCEDURE EseguiRicarica(IN Utente VARCHAR(50), IN Bar VARCHAR(11), IN Importo float)
@@ -230,12 +289,12 @@ DELIMITER ;
 
 DROP PROCEDURE IF EXISTS EseguiAcquisto;
 DELIMITER $$
-CREATE PROCEDURE EseguiAcquisto(IN Utente VARCHAR(50), IN Bar VARCHAR(11), IN Importo float, IN Prodotto INT(11), IN Quantita INT(11))
+CREATE PROCEDURE EseguiAcquisto(IN Utente VARCHAR(50), IN Bar VARCHAR(11), IN Prodotto INT(11), IN Quantita INT(11))
 BEGIN
 	DECLARE IDTransazione INT(11);
     
-	INSERT INTO Transazione(Bar, Utente, Importo)
-    VALUES (Bar, Utente, Importo);
+	INSERT INTO Transazione(Bar, Utente)
+    VALUES (Bar, Utente);
     
     SELECT MAX(T.Id)
     INTO IDTransazione
@@ -255,15 +314,14 @@ BEGIN
 	DECLARE Utente VARCHAR(50);
     DECLARE Prodotto INT(11);
     DECLARE Quantita INT(11);
-    DECLARE Importo float;
     DECLARE IDTransazione INT(11);
     
-    SELECT O.Utente, O.Prodotto, O.Quantita, O.Importo
-	INTO Utente, Prodotto, Quantita, Importo
+    SELECT O.Utente, O.Prodotto, O.Quantita
+	INTO Utente, Prodotto, Quantita
     FROM Ordini O
     WHERE O.Id=Id AND O.Bar=Bar;
     
-    CALL EseguiAcquisto(Utente, Bar, Importo, Prodotto, Quantita);
+    CALL EseguiAcquisto(Utente, Bar, Prodotto, Quantita);
     
     DELETE FROM Ordini
     WHERE Ordini.Id=Id AND Ordini.Bar=Bar;
@@ -273,18 +331,16 @@ DELIMITER ;
 
 ###################### TRIGGER #####################
 
-DROP TRIGGER IF EXISTS CalcolaImportoOrdine;
+DROP TRIGGER IF EXISTS MemorizzaNuovoPrezzoProdotto;
 DELIMITER $$
-CREATE TRIGGER CalcolaImportoOrdine
-BEFORE INSERT ON Ordini
+CREATE TRIGGER MemorizzaNuovoPrezzoProdotto
+AFTER UPDATE ON Prodotto
 FOR EACH ROW
 BEGIN
-	IF (NEW.Importo <= 0) 
-	THEN SET NEW.Importo = (
-		SELECT Prezzo*NEW.Quantita 
-        FROM Prodotto
-        WHERE Prodotto.Id = NEW.Prodotto AND Prodotto.Bar = NEW.Bar
-		);
+	IF (OLD.Prezzo <> NEW.Prezzo) 
+	THEN 
+		INSERT INTO StoricoPrezziProdotto (Prodotto, Bar, Prezzo)
+        VALUES (OLD.Id, OLD.Bar, OLD.Prezzo);
     END IF;
 END $$
 DELIMITER ;
@@ -386,12 +442,12 @@ INSERT INTO Scuola VALUES
     ("EFGH789012", "Leonardo da Vinci", "Milano", "10:30:00"),
     ("IJKL345678", "Giuseppe Verdi", "Napoli", "10:15:00");
 
-LOAD DATA LOCAL INFILE "/Users/lorenzo/Informatica/Progetto_BDSI/Categorie.csv" INTO TABLE Categoria  #inserire il proprio filepath
+LOAD DATA LOCAL INFILE "/home/lorenzo/Informatica/Progetto_BDSI/Categorie.csv" INTO TABLE Categoria  #inserire il proprio filepath
 	FIELDS TERMINATED BY ";"
 	LINES TERMINATED BY "\r\n"
 	IGNORE 1 ROWS;
     
-LOAD DATA LOCAL INFILE "/Users/lorenzo/Informatica/Progetto_BDSI/Utenti.txt" INTO TABLE Utente  #inserire il proprio filepath
+LOAD DATA LOCAL INFILE "/home/lorenzo/Informatica/Progetto_BDSI/Utenti.txt" INTO TABLE Utente  #inserire il proprio filepath
 	FIELDS TERMINATED BY ";"
 	LINES TERMINATED BY "\r\n"
 	IGNORE 1 ROWS;
@@ -421,6 +477,17 @@ INSERT INTO Prodotto (Bar, Nome, Prezzo, Tipo) VALUES
     ("49781624053", "Croccantelle", 1, "Salato"),
     ("49781624053", "Brioche", 1.1, "Dolce"),
     ("49781624053", "Coca Cola", 1, "Bevanda");
+    
+INSERT INTO StoricoPrezziProdotto VALUES
+	(1, "85920475612", 1.5, "2023-05-10 10:00:00"),
+    (2, "32650198347", 0.4, "2023-05-11 10:00:00"),
+    (4, "71249560382", 2.5, "2023-06-01 12:00:00"),
+    (2, "49781624053", 1, "2023-05-02 10:00:00"),
+    (2, "49781624053", 1.5, "2023-05-10 10:00:00"),
+    (1, "32650198347", 3, "2023-06-06 14:00:00"),
+    (2, "85920475612", 2, "2023-05-16 10:00:00"),
+    (1, "85920475612", 1.25, "2023-05-20 10:00:00"),
+    (3, "49781624053", 0.8, "2023-05-24 18:00:00");
     
 INSERT INTO PresenzaAllergeneProdotto VALUES
 	# Glutine
@@ -475,17 +542,18 @@ INSERT INTO Ordini (Utente, Prodotto, Bar, Quantita) VALUES
     ("sara.santoro60@email.it", 2, "49781624053", 2),
     ("alessia.gallo136@email.it", 1, "49781624053", 1);
 
-LOAD DATA LOCAL INFILE "/Users/lorenzo/Informatica/Progetto_BDSI/Transazione.csv" INTO TABLE Transazione  #inserire il proprio filepath
+LOAD DATA LOCAL INFILE "/home/lorenzo/Informatica/Progetto_BDSI/Transazione.csv" INTO TABLE Transazione  #inserire il proprio filepath
 	FIELDS TERMINATED BY ";"
 	LINES TERMINATED BY "\r\n"
-	IGNORE 1 ROWS;
+	IGNORE 1 ROWS
+    (Bar, Utente);
     
-LOAD DATA LOCAL INFILE "/Users/lorenzo/Informatica/Progetto_BDSI/Ricariche.csv" INTO TABLE Ricarica  #inserire il proprio filepath
+LOAD DATA LOCAL INFILE "/home/lorenzo/Informatica/Progetto_BDSI/Ricariche.csv" INTO TABLE Ricarica  #inserire il proprio filepath
 	FIELDS TERMINATED BY ";"
 	LINES TERMINATED BY "\r\n"
 	IGNORE 1 ROWS;
 
-LOAD DATA LOCAL INFILE "/Users/lorenzo/Informatica/Progetto_BDSI/StoricoAcquisti.csv" INTO TABLE StoricoAcquisti  #inserire il proprio filepath
+LOAD DATA LOCAL INFILE "/home/lorenzo/Informatica/Progetto_BDSI/StoricoAcquisti.csv" INTO TABLE StoricoAcquisti  #inserire il proprio filepath
 	FIELDS TERMINATED BY ";"
 	LINES TERMINATED BY "\r\n"
 	IGNORE 1 ROWS;
@@ -552,7 +620,7 @@ CREATE VIEW TransazioniOdierneBarSorriso AS
 	ORDER BY t.Data ASC;
 
 /*
-SELECT * FROM TransazioniOdierneBarSorriso; # dovrebbe essere vuota
+SELECT * FROM TransazioniOdierneBarSorriso;
 CALL EseguiRicarica('matteo.marchetti55@email.it', '71249560382', 50);
 CALL EseguiAcquisto('matteo.marchetti55@email.it', '71249560382', 4, 4, 2);
 SELECT * FROM TransazioniOdierneBarSorriso;
