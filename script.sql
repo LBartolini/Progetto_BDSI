@@ -126,7 +126,68 @@ CREATE TABLE IF NOT EXISTS Ricarica (
   FOREIGN KEY (Transazione, Bar) REFERENCES Transazione (Id, Bar) ON UPDATE CASCADE
 ) ENGINE=InnoDB;
 
+###################### VISTE #####################
+
+DROP FUNCTION IF EXISTS GetPrezzoProdotto;
+DELIMITER $$
+CREATE FUNCTION GetPrezzoProdotto(Prodotto INT(11), Bar VARCHAR(11), Data datetime) 
+RETURNS float
+DETERMINISTIC
+BEGIN
+	DECLARE Prezzo float DEFAULT NULL;
+    
+    SELECT SPP.Prezzo
+    INTO Prezzo
+    FROM StoricoPrezziProdotto SPP
+    WHERE SPP.Data >= Data AND SPP.Bar = Bar AND SPP.Prodotto = Prodotto
+    ORDER BY SPP.Data ASC
+    LIMIT 1;
+    
+    IF Prezzo IS NULL
+    THEN SELECT P.Prezzo
+		INTO Prezzo
+        FROM Prodotto P
+        WHERE P.Id = Prodotto AND P.Bar = Bar;
+	END IF;
+    
+    RETURN Prezzo;
+END $$
+DELIMITER ;
+    
+DROP VIEW IF EXISTS OrdiniConImporto;
+CREATE VIEW OrdiniConImporto AS
+	SELECT Id, Utente, Prodotto, Bar, Quantita, Data, ROUND(Quantita*GetPrezzoProdotto(Prodotto, Bar, Data), 2) AS Importo
+    FROM Ordini;
+    
+DROP VIEW IF EXISTS StoricoAcquistiConImporto;
+CREATE VIEW StoricoAcquistiConImporto AS
+	SELECT SA.Transazione, SA.Bar, SA.Prodotto, SA.Quantita, T.Data, ROUND(SA.Quantita*GetPrezzoProdotto(SA.Prodotto, SA.Bar, T.Data), 2) AS Importo
+    FROM StoricoAcquisti SA
+    JOIN Transazione T ON SA.Transazione=T.Id AND SA.Bar=T.Bar;
+
+DROP VIEW IF EXISTS TransazioniConImporto;
+CREATE VIEW TransazioniConImporto AS
+	SELECT *
+    FROM ((SELECT T.Id, T.Bar, T.Utente, SA.Importo, T.Data, 'Acquisto' AS Tipo
+		FROM Transazione T
+		JOIN StoricoAcquistiConImporto SA ON SA.Transazione=T.Id AND SA.Bar=T.Bar)
+			UNION
+		(SELECT T.Id, T.Bar, T.Utente, R.Importo, T.Data, 'Ricarica' AS Tipo
+			FROM Transazione T
+			JOIN Ricarica R ON R.Transazione=T.Id AND R.Bar=T.Bar)) t
+	ORDER BY t.Data ASC;    
+
+DROP VIEW IF EXISTS OrdiniBarAngolo; # PIva = 32650198347
+CREATE VIEW OrdiniBarAngolo AS
+	SELECT O.Id, O.Utente, O.Prodotto, O.Quantita, O.Data, O.Importo
+	FROM OrdiniConImporto O
+	WHERE O.Bar="32650198347";
+
 ###################### FUNZIONI E PROCEDURE #####################
+
+##
+## NB: La funzione GetPrezzoProdotto è stata definita sopra per necessità durante la creazione delle viste
+##
 
 DROP FUNCTION IF EXISTS BarAccessibileDaUtente;
 DELIMITER $$
@@ -158,24 +219,24 @@ BEGIN
     DECLARE ordini float DEFAULT 0;
     DECLARE saldo float DEFAULT 0;
     
-    SELECT IFNULL(SUM(Transazione.Importo), 0)
+    SELECT IFNULL(SUM(R.Importo), 0)
     INTO ricariche
-    FROM Transazione
-    JOIN Ricarica ON Ricarica.Transazione=Transazione.Id AND Ricarica.Bar=Transazione.Bar
-    WHERE Transazione.Utente=Email AND Transazione.Bar=Bar;
+    FROM Transazione T
+    JOIN Ricarica R ON R.Transazione=T.Id AND R.Bar=T.Bar
+    WHERE T.Utente=Email AND T.Bar=Bar;
     
-    SELECT IFNULL(SUM(Transazione.Importo), 0)
+    SELECT IFNULL(SUM(SA.Importo), 0)
     INTO spese
-    FROM Transazione
-    JOIN StoricoAcquisti ON StoricoAcquisti.Transazione=Transazione.Id AND StoricoAcquisti.Bar=Transazione.Bar
-    WHERE Transazione.Utente=Email AND Transazione.Bar=Bar;
+    FROM Transazione T
+    JOIN StoricoAcquistiConImporto SA ON SA.Transazione=T.Id AND SA.Bar=T.Bar
+    WHERE T.Utente=Email AND T.Bar=Bar;
     
     IF NOT FlagSaldoDefinitivo
     THEN 
-		SELECT IFNULL(SUM(Ordini.Importo), 0)
+		SELECT IFNULL(SUM(O.Importo), 0)
 		INTO ordini
-		FROM Ordini
-		WHERE Ordini.Utente=Email AND Ordini.Bar=Bar;
+		FROM OrdiniConImporto O
+		WHERE O.Utente=Email AND O.Bar=Bar;
     END IF;
     
     SET saldo = ricariche - spese - ordini;
@@ -203,7 +264,7 @@ BEGIN
 END $$
 DELIMITER ;
 
-# procedura per trovare i prodotti in base ad un allergene
+# procedura per trovare i prodotti senza un determinato allergene
 DROP PROCEDURE IF EXISTS ProdottiSenzaAllergene;
 DELIMITER $$
 CREATE PROCEDURE ProdottiSenzaAllergene(IN Bar VARCHAR(11), IN Allergene INT(11))
@@ -214,32 +275,6 @@ BEGIN
 		FROM Prodotto Prod
 		JOIN PresenzaAllergeneProdotto Pres ON Pres.Prodotto=Prod.Id AND Pres.Bar=Prod.Bar
 		WHERE Pres.Allergene=Allergene AND Prod.Bar=Bar) AND Prodotto.Bar=Bar;
-END $$
-DELIMITER ;
-
-DROP FUNCTION IF EXISTS GetPrezzoProdotto;
-DELIMITER $$
-CREATE FUNCTION GetPrezzoProdotto(Prodotto INT(11), Bar VARCHAR(11), Data datetime) 
-RETURNS float
-DETERMINISTIC
-BEGIN
-	DECLARE Prezzo float DEFAULT NULL;
-    
-    SELECT SPP.Prezzo
-    INTO Prezzo
-    FROM StoricoPrezziProdotto SPP
-    WHERE SPP.Data >= Data AND SPP.Bar = Bar AND SPP.Prodotto = Prodotto
-    ORDER BY SPP.Data ASC
-    LIMIT 1;
-    
-    IF Prezzo IS NULL
-    THEN SELECT P.Prezzo
-		INTO Prezzo
-        FROM Prodotto P
-        WHERE P.Id = Prodotto AND P.Bar = Bar;
-	END IF;
-    
-    RETURN Prezzo;
 END $$
 DELIMITER ;
 
@@ -273,8 +308,8 @@ CREATE PROCEDURE EseguiRicarica(IN Utente VARCHAR(50), IN Bar VARCHAR(11), IN Im
 BEGIN
 	DECLARE IDTransazione INT(11);
     
-	INSERT INTO Transazione(Bar, Utente, Importo)
-    VALUES (Bar, Utente, Importo);
+	INSERT INTO Transazione(Bar, Utente)
+    VALUES (Bar, Utente);
     
     SELECT MAX(T.Id)
     INTO IDTransazione
@@ -282,19 +317,19 @@ BEGIN
     WHERE T.Bar=Bar;
     
     INSERT INTO Ricarica
-    VALUES (IDTransazione, Bar);
+    VALUES (IDTransazione, Bar, Importo);
 
 END $$
 DELIMITER ;
 
 DROP PROCEDURE IF EXISTS EseguiAcquisto;
 DELIMITER $$
-CREATE PROCEDURE EseguiAcquisto(IN Utente VARCHAR(50), IN Bar VARCHAR(11), IN Prodotto INT(11), IN Quantita INT(11))
+CREATE PROCEDURE EseguiAcquisto(IN Utente VARCHAR(50), IN Bar VARCHAR(11), IN Prodotto INT(11), IN Quantita INT(11), IN Data datetime)
 BEGIN
 	DECLARE IDTransazione INT(11);
     
-	INSERT INTO Transazione(Bar, Utente)
-    VALUES (Bar, Utente);
+	INSERT INTO Transazione(Bar, Utente, Data)
+    VALUES (Bar, Utente, Data);
     
     SELECT MAX(T.Id)
     INTO IDTransazione
@@ -314,14 +349,14 @@ BEGIN
 	DECLARE Utente VARCHAR(50);
     DECLARE Prodotto INT(11);
     DECLARE Quantita INT(11);
-    DECLARE IDTransazione INT(11);
+    DECLARE Data datetime;
     
-    SELECT O.Utente, O.Prodotto, O.Quantita
-	INTO Utente, Prodotto, Quantita
+    SELECT O.Utente, O.Prodotto, O.Quantita, O.Data
+	INTO Utente, Prodotto, Quantita, Data
     FROM Ordini O
     WHERE O.Id=Id AND O.Bar=Bar;
     
-    CALL EseguiAcquisto(Utente, Bar, Prodotto, Quantita);
+    CALL EseguiAcquisto(Utente, Bar, Prodotto, Quantita, Data);
     
     DELETE FROM Ordini
     WHERE Ordini.Id=Id AND Ordini.Bar=Bar;
@@ -442,12 +477,14 @@ INSERT INTO Scuola VALUES
     ("EFGH789012", "Leonardo da Vinci", "Milano", "10:30:00"),
     ("IJKL345678", "Giuseppe Verdi", "Napoli", "10:15:00");
 
-LOAD DATA LOCAL INFILE "/home/lorenzo/Informatica/Progetto_BDSI/Categorie.csv" INTO TABLE Categoria  #inserire il proprio filepath
+###### inserire il proprio filepath
+LOAD DATA LOCAL INFILE "C:\\Users\\Stefano\\Desktop\\Informatica\\Progetto_BDSI\\Categorie.csv" INTO TABLE Categoria
 	FIELDS TERMINATED BY ";"
 	LINES TERMINATED BY "\r\n"
 	IGNORE 1 ROWS;
     
-LOAD DATA LOCAL INFILE "/home/lorenzo/Informatica/Progetto_BDSI/Utenti.txt" INTO TABLE Utente  #inserire il proprio filepath
+###### inserire il proprio filepath
+LOAD DATA LOCAL INFILE "C:\\Users\\Stefano\\Desktop\\Informatica\\Progetto_BDSI\\Utenti.txt" INTO TABLE Utente
 	FIELDS TERMINATED BY ";"
 	LINES TERMINATED BY "\r\n"
 	IGNORE 1 ROWS;
@@ -542,25 +579,26 @@ INSERT INTO Ordini (Utente, Prodotto, Bar, Quantita) VALUES
     ("sara.santoro60@email.it", 2, "49781624053", 2),
     ("alessia.gallo136@email.it", 1, "49781624053", 1);
 
-LOAD DATA LOCAL INFILE "/home/lorenzo/Informatica/Progetto_BDSI/Transazione.csv" INTO TABLE Transazione  #inserire il proprio filepath
+###### inserire il proprio filepath
+LOAD DATA LOCAL INFILE "C:\\Users\\Stefano\\Desktop\\Informatica\\Progetto_BDSI\\Transazione.csv" INTO TABLE Transazione  
 	FIELDS TERMINATED BY ";"
 	LINES TERMINATED BY "\r\n"
 	IGNORE 1 ROWS
     (Bar, Utente);
-    
-LOAD DATA LOCAL INFILE "/home/lorenzo/Informatica/Progetto_BDSI/Ricariche.csv" INTO TABLE Ricarica  #inserire il proprio filepath
+
+###### inserire il proprio filepath
+LOAD DATA LOCAL INFILE "C:\\Users\\Stefano\\Desktop\\Informatica\\Progetto_BDSI\\Ricariche.csv" INTO TABLE Ricarica 
 	FIELDS TERMINATED BY ";"
 	LINES TERMINATED BY "\r\n"
 	IGNORE 1 ROWS;
 
-LOAD DATA LOCAL INFILE "/home/lorenzo/Informatica/Progetto_BDSI/StoricoAcquisti.csv" INTO TABLE StoricoAcquisti  #inserire il proprio filepath
+LOAD DATA LOCAL INFILE "C:\\Users\\Stefano\\Desktop\\Informatica\\Progetto_BDSI\\StoricoAcquisti.csv" INTO TABLE StoricoAcquisti  #inserire il proprio filepath
 	FIELDS TERMINATED BY ";"
 	LINES TERMINATED BY "\r\n"
 	IGNORE 1 ROWS;
 
 ###################### INTERROGAZIONI #####################
 
-/*
 ## Trovare tutti gli Utenti che appartengono al Bar con Partita iva "85920475612"
 SELECT Utente.Email 
 	FROM Utente
@@ -585,43 +623,15 @@ FROM Utente U
 	JOIN Bar B ON C.Scuola=B.Scuola  
 GROUP BY U.Email
 HAVING MIN(GetSaldoProvvisorioUtente(U.Email, B.PIva)) >= 0;
-*/
 
-###################### VISTE #####################
+###################### TEST VISTE #####################
 
-DROP VIEW IF EXISTS OrdiniBarAngolo; # PIva = 32650198347
-CREATE VIEW OrdiniBarAngolo AS
-	SELECT *
-	FROM Ordini O
-	WHERE O.Bar="32650198347"
-WITH LOCAL CHECK OPTION;
-
-/*
 SELECT * FROM OrdiniBarAngolo;
-# INSERT INTO OrdiniBarAngolo(Utente, Prodotto, Bar, Quantita) VALUES ('elisa.monti28@email.it', 1, "49781624053", 2); # Conflitto LOCAL CHECK OPTION causato dal Bar inserito non conforme
-INSERT INTO OrdiniBarAngolo(Utente, Prodotto, Bar, Quantita) VALUES ('elisa.monti28@email.it', 1, "32650198347", 2);
-SELECT * FROM OrdiniBarAngolo;
+INSERT INTO Ordini(Utente, Prodotto, Bar, Quantita) VALUES ('elisa.monti28@email.it', 1, "32650198347", 2);
 SELECT * FROM OrdiniBarAngolo WHERE Utente='elisa.monti28@email.it';
-*/
 
-DROP VIEW IF EXISTS TransazioniOdierneBarSorriso; # PIva = 71249560382
-CREATE VIEW TransazioniOdierneBarSorriso AS
-	SELECT *
-    FROM ((SELECT T.Id, T.Utente, T.Importo, T.Data, 'Acquisto' AS Tipo
-		FROM Transazione T
-		JOIN StoricoAcquisti SA ON SA.Transazione=T.Id AND SA.Bar=T.Bar
-		WHERE T.Bar="71249560382")
-			UNION
-		(SELECT T.Id, T.Utente, T.Importo, T.Data, 'Ricarica' AS Tipo
-			FROM Transazione T
-			JOIN Ricarica R ON R.Transazione=T.Id AND R.Bar=T.Bar
-			WHERE T.Bar="71249560382")) t
-	WHERE DATE(t.Data) = CURDATE()
-	ORDER BY t.Data ASC;
-
-/*
-SELECT * FROM TransazioniOdierneBarSorriso;
+SELECT * FROM TransazioniConImporto;
 CALL EseguiRicarica('matteo.marchetti55@email.it', '71249560382', 50);
-CALL EseguiAcquisto('matteo.marchetti55@email.it', '71249560382', 4, 4, 2);
-SELECT * FROM TransazioniOdierneBarSorriso;
-*/
+CALL EseguiAcquisto('matteo.marchetti55@email.it', '71249560382', 4, 4, current_timestamp());
+SELECT * FROM TransazioniConImporto WHERE Utente='matteo.marchetti55@email.it';
+    
