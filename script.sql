@@ -264,41 +264,13 @@ BEGIN
 END $$
 DELIMITER ;
 
-# procedura per trovare i prodotti senza un determinato allergene
-DROP PROCEDURE IF EXISTS ProdottiSenzaAllergene;
+DROP FUNCTION IF EXISTS GetPrezzoOdiernoProdotto;
 DELIMITER $$
-CREATE PROCEDURE ProdottiSenzaAllergene(IN Bar VARCHAR(11), IN Allergene INT(11))
-BEGIN
-	SELECT *
-    FROM Prodotto
-    WHERE (Id, Bar) NOT IN (SELECT Prod.Id, Prod.Bar
-		FROM Prodotto Prod
-		JOIN PresenzaAllergeneProdotto Pres ON Pres.Prodotto=Prod.Id AND Pres.Bar=Prod.Bar
-		WHERE Pres.Allergene=Allergene AND Prod.Bar=Bar) AND Prodotto.Bar=Bar;
-END $$
-DELIMITER ;
-
-DROP FUNCTION IF EXISTS GetPrezzoProdottoOdierno;
-DELIMITER $$
-CREATE FUNCTION GetPrezzoProdottoOdierno(Prodotto INT(11), Bar VARCHAR(11)) 
+CREATE FUNCTION GetPrezzoOdiernoProdotto(Prodotto INT(11), Bar VARCHAR(11)) 
 RETURNS float
 DETERMINISTIC
 BEGIN
     RETURN GetPrezzoProdotto(Prodotto, Bar, current_timestamp());
-END $$
-DELIMITER ;
-
-# procedura per trovare i prodotti in base ad un allergene
-DROP PROCEDURE IF EXISTS ProdottiSenzaAllergene;
-DELIMITER $$
-CREATE PROCEDURE ProdottiSenzaAllergene(IN Bar VARCHAR(11), IN Allergene INT(11))
-BEGIN
-	SELECT *
-    FROM Prodotto
-    WHERE (Id, Bar) NOT IN (SELECT Prod.Id, Prod.Bar
-		FROM Prodotto Prod
-		JOIN PresenzaAllergeneProdotto Pres ON Pres.Prodotto=Prod.Id AND Pres.Bar=Prod.Bar
-		WHERE Pres.Allergene=Allergene AND Prod.Bar=Bar) AND Prodotto.Bar=Bar;
 END $$
 DELIMITER ;
 
@@ -356,11 +328,13 @@ BEGIN
     FROM Ordini O
     WHERE O.Id=Id AND O.Bar=Bar;
     
-    CALL EseguiAcquisto(Utente, Bar, Prodotto, Quantita, Data);
-    
-    DELETE FROM Ordini
-    WHERE Ordini.Id=Id AND Ordini.Bar=Bar;
-
+    IF Utente IS NOT NULL
+	THEN	
+        CALL EseguiAcquisto(Utente, Bar, Prodotto, Quantita, Data);
+		
+		DELETE FROM Ordini
+		WHERE Ordini.Id=Id AND Ordini.Bar=Bar;
+	END IF;
 END $$
 DELIMITER ;
 
@@ -623,6 +597,30 @@ FROM Utente U
 	JOIN Bar B ON C.Scuola=B.Scuola  
 GROUP BY U.Email
 HAVING MIN(GetSaldoProvvisorioUtente(U.Email, B.PIva)) >= 0;
+
+## Trovare i prodotti senza Glutine (allergene con id 1) del bar 32650198347
+SELECT P.Id, P.Nome, P.Prezzo, P.Tipo
+FROM Prodotto P
+WHERE (P.Id, P.Bar) NOT IN (SELECT Prod.Id, Prod.Bar
+	FROM Prodotto Prod
+	JOIN PresenzaAllergeneProdotto Pres ON Pres.Prodotto=Prod.Id AND Pres.Bar=Prod.Bar
+	WHERE Pres.Allergene=1 AND Prod.Bar='32650198347') AND P.Bar='32650198347';
+
+###################### TEST FUNZIONI E PROCEDURE #####################
+
+SELECT  * FROM OrdiniConImporto WHERE Bar='32650198347';
+SELECT  * FROM StoricoAcquistiConImporto WHERE Bar='32650198347';
+CALL ConfermaOrdine(7, '32650198347');
+SELECT  * FROM OrdiniConImporto WHERE Bar='32650198347';
+SELECT  * FROM StoricoAcquistiConImporto WHERE Bar='32650198347';
+
+SELECT GetSaldoDefinitivoUtente('elisa.monti28@email.it', '32650198347');
+CALL EseguiRicarica('elisa.monti28@email.it', '32650198347', 50);
+SELECT GetSaldoDefinitivoUtente('elisa.monti28@email.it', '32650198347');
+
+SELECT GetPrezzoProdotto(1, "85920475612", "2023-05-15");
+SELECT GetPrezzoProdotto(1, "85920475612", "2023-04-22");
+SELECT GetPrezzoOdiernoProdotto(1, "85920475612");
 
 ###################### TEST VISTE #####################
 
