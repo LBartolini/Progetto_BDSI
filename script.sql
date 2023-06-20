@@ -402,13 +402,13 @@ INSERT INTO Scuola VALUES
     ("IJKL345678", "Giuseppe Verdi", "Napoli", "10:15:00");
 
 ###### inserire il proprio filepath
-LOAD DATA LOCAL INFILE "/Users/lorenzo/Informatica/Progetto_BDSI/Categorie.csv" INTO TABLE Categoria
+LOAD DATA LOCAL INFILE "Categorie.csv" INTO TABLE Categoria
 	FIELDS TERMINATED BY ";"
 	LINES TERMINATED BY "\r\n"
 	IGNORE 1 ROWS;
     
 ###### inserire il proprio filepath
-LOAD DATA LOCAL INFILE "/Users/lorenzo/Informatica/Progetto_BDSI/Utenti.txt" INTO TABLE Utente
+LOAD DATA LOCAL INFILE "Utenti.txt" INTO TABLE Utente
 	FIELDS TERMINATED BY ";"
 	LINES TERMINATED BY "\r\n"
 	IGNORE 1 ROWS;
@@ -504,19 +504,19 @@ INSERT INTO Ordini (Utente, Prodotto, Quantita) VALUES
     ("alessia.gallo136@email.it", 13, 1);
 
 ###### inserire il proprio filepath
-LOAD DATA LOCAL INFILE "/Users/lorenzo/Informatica/Progetto_BDSI/Transazione.csv" INTO TABLE Transazione  
+LOAD DATA LOCAL INFILE "Transazione.csv" INTO TABLE Transazione  
 	FIELDS TERMINATED BY ";"
 	LINES TERMINATED BY "\r\n"
 	IGNORE 1 ROWS
     (Bar, Utente);
 
 ###### inserire il proprio filepath
-LOAD DATA LOCAL INFILE "/Users/lorenzo/Informatica/Progetto_BDSI/Ricariche.csv" INTO TABLE Ricarica 
+LOAD DATA LOCAL INFILE "Ricariche.csv" INTO TABLE Ricarica 
 	FIELDS TERMINATED BY ";"
 	LINES TERMINATED BY "\r\n"
 	IGNORE 1 ROWS;
 
-LOAD DATA LOCAL INFILE "/Users/lorenzo/Informatica/Progetto_BDSI/StoricoAcquisti.csv" INTO TABLE StoricoAcquisti  #inserire il proprio filepath
+LOAD DATA LOCAL INFILE "StoricoAcquisti.csv" INTO TABLE StoricoAcquisti  #inserire il proprio filepath
 	FIELDS TERMINATED BY ";"
 	LINES TERMINATED BY "\r\n"
 	IGNORE 1 ROWS;
